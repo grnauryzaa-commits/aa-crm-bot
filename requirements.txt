@@ -1,0 +1,12 @@
+aiogram
+aiohttp
+aiosignal
+attrs
+certifi
+frozenlist
+idna
+magic-filter
+multidict
+pydantic
+typing_extensions
+yarl
