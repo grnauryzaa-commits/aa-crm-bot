@@ -1,39 +1,188 @@
 from aiogram import Router, F
-from aiogram.types import Message
-from database import get_all
+from aiogram.types import (
+    Message,
+    CallbackQuery,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
+
+from database import get_all, get_sponsor_by_id
 
 router = Router()
 
 
-def card(s):
-    return (
+# =====================================================
+# СПИСОК СПОНСОРОВ
+# =====================================================
+
+@router.message(F.text == "🤝 Спонсоры")
+async def show_sponsors(message: Message):
+
+    sponsors = get_all()
+
+    if not sponsors:
+        await message.answer(
+            "❌ Спонсоры пока отсутствуют"
+        )
+        return
+
+    sponsors = sorted(
+        sponsors,
+        key=lambda x: x[1].lower()
+    )
+
+    buttons = []
+
+    for sponsor in sponsors:
+
+        sponsor_id = sponsor[0]
+        sponsor_name = sponsor[1]
+        city = sponsor[5]
+
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"👤 {sponsor_name} • {city}",
+                callback_data=f"sponsor_{sponsor_id}"
+            )
+        ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await message.answer(
         "━━━━━━━━━━━━━━\n"
-        "🤝 <b>СПОНСОР</b>\n"
+        "🤝 СПОНСОРЫ\n"
         "━━━━━━━━━━━━━━\n\n"
-
-        f"👤 <b>{s[1]}</b>\n\n"
-        f"🎂 Возраст: {s[2]}\n"
-        f"🧠 {s[3]}\n"
-        f"⏳ {s[4]}\n"
-        f"🏙 {s[5]}\n"
-        f"📚 {s[6]}\n\n"
-
-        f"📱 {s[7]}\n"
-        f"☎️ {s[8]}\n\n"
-
-        f"📌 {s[9]}\n"
-        "━━━━━━━━━━━━━━"
+        "Выберите спонсора:",
+        reply_markup=kb
     )
 
 
-@router.message(F.text == "🤝 Спонсоры")
-async def show(message: Message):
+# =====================================================
+# КАРТОЧКА СПОНСОРА
+# =====================================================
 
-    data = get_all()
+@router.callback_query(
+    F.data.startswith("sponsor_")
+)
+async def sponsor_card(
+    callback: CallbackQuery
+):
 
-    if not data:
-        await message.answer("Нет спонсоров")
+    sponsor_id = int(
+        callback.data.split("_")[1]
+    )
+
+    sponsor = get_sponsor_by_id(
+        sponsor_id
+    )
+
+    if not sponsor:
+
+        await callback.answer(
+            "Спонсор не найден",
+            show_alert=True
+        )
+
         return
 
-    for s in data:
-        await message.answer(card(s), parse_mode="HTML")
+    (
+        sid,
+        name,
+        age,
+        identity,
+        sobriety,
+        city,
+        formats,
+        telegram,
+        phone,
+        about
+    ) = sponsor
+
+    text = (
+        "━━━━━━━━━━━━━━\n"
+        "🤝 СПОНСОР\n"
+        "━━━━━━━━━━━━━━\n\n"
+
+        f"👤 {name}\n\n"
+
+        f"🎂 Возраст: {age}\n"
+        f"🧠 {identity}\n"
+        f"⏳ {sobriety}\n"
+        f"🏙 {city}\n"
+        f"📚 {formats}\n\n"
+
+        f"📱 {telegram}\n"
+        f"☎️ {phone}\n\n"
+
+        f"📌 {about}\n"
+
+        "━━━━━━━━━━━━━━"
+    )
+
+    back_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅ Назад к списку",
+                    callback_data="back_to_sponsors"
+                )
+            ]
+        ]
+    )
+
+    await callback.message.edit_text(
+        text,
+        reply_markup=back_kb
+    )
+
+    await callback.answer()
+
+
+# =====================================================
+# НАЗАД К СПИСКУ
+# =====================================================
+
+@router.callback_query(
+    F.data == "back_to_sponsors"
+)
+async def back_to_sponsors(
+    callback: CallbackQuery
+):
+
+    sponsors = get_all()
+
+    sponsors = sorted(
+        sponsors,
+        key=lambda x: x[1].lower()
+    )
+
+    buttons = []
+
+    for sponsor in sponsors:
+
+        sponsor_id = sponsor[0]
+        sponsor_name = sponsor[1]
+        city = sponsor[5]
+
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"👤 {sponsor_name} • {city}",
+                callback_data=f"sponsor_{sponsor_id}"
+            )
+        ])
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=buttons
+    )
+
+    await callback.message.edit_text(
+        "━━━━━━━━━━━━━━\n"
+        "🤝 СПОНСОРЫ\n"
+        "━━━━━━━━━━━━━━\n\n"
+        "Выберите спонсора:",
+        reply_markup=kb
+    )
+
+    await callback.answer()

@@ -19,6 +19,9 @@ from admin import router as admin_router
 
 
 # 🚀 BOT + FSM STORAGE (ВАЖНО)
+import os
+
+print("ENV TOKEN =", os.environ.get("TOKEN"))
 bot = Bot(token=TOKEN)
 
 dp = Dispatcher(storage=MemoryStorage())

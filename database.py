@@ -45,3 +45,19 @@ def get_all():
 
     conn.close()
     return data
+
+def get_sponsor_by_id(sponsor_id):
+
+    conn = sqlite3.connect("database.db")
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT * FROM sponsors WHERE id=?",
+        (sponsor_id,)
+    )
+
+    sponsor = cur.fetchone()
+
+    conn.close()
+
+    return sponsor
