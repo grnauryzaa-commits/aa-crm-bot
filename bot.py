@@ -1,63 +1,58 @@
 import asyncio
 
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import Message
 
 from config import TOKEN
 from database import init_db
-from menu import main_menu
 
-# 📦 routers
+# routers
+from start import router as start_router
+from sponsors import router as sponsors_router
 from steps import router as steps_router
 from traditions import router as traditions_router
 from help import router as help_router
-from sponsors import router as sponsors_router
 from form import router as form_router
 from admin import router as admin_router
 
 
-# 🚀 BOT + FSM STORAGE (ВАЖНО)
-import os
+# =====================================================
+# BOT
+# =====================================================
 
-print("ENV TOKEN =", os.environ.get("TOKEN"))
 bot = Bot(token=TOKEN)
 
-dp = Dispatcher(storage=MemoryStorage())
+dp = Dispatcher()
 
 
-# 🧱 INIT DB
-init_db()
+# =====================================================
+# ROUTERS
+# =====================================================
 
+dp.include_router(start_router)
 
-# 📦 ROUTERS (ПРАВИЛЬНЫЙ ПОРЯДОК)
-dp.include_router(help_router)
-dp.include_router(steps_router)
-dp.include_router(traditions_router)
+# sponsors раньше form
 dp.include_router(sponsors_router)
 
-# ⚙️ админка ДО формы (чтобы не блокировалась)
-dp.include_router(admin_router)
+dp.include_router(steps_router)
+dp.include_router(traditions_router)
+dp.include_router(help_router)
 
-# 📩 форма ВСЕГДА ПОСЛЕДНЯЯ
+# form почти в конце
 dp.include_router(form_router)
 
-
-# 🚀 START
-@dp.message(CommandStart())
-async def start(message: Message):
-
-    await message.answer(
-        "🤝 <b>CRM PRO BOT</b>\n\nДобро пожаловать!",
-        reply_markup=main_menu,
-        parse_mode="HTML"
-    )
+dp.include_router(admin_router)
 
 
-# ▶️ RUN BOT
+# =====================================================
+# START BOT
+# =====================================================
+
 async def main():
+
     print("🚀 BOT STARTING...")
+
+    init_db()
+
     await dp.start_polling(bot)
 
 
