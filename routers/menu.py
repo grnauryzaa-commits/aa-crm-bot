@@ -1,10 +1,9 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram import Router, types
+from aiogram.filters import Command
 
-main_menu = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="➕ Стать спонсором")],
-        [KeyboardButton(text="📖 Ежедневные размышления")],
-        [KeyboardButton(text="🆘 Мне тяжело"), KeyboardButton(text="⚙️ Админ панель")]
-    ],
-    resize_keyboard=True
-)
+# Создаем роутер, который ищет bot.py
+router = Router()
+
+@router.message(Command("menu"))
+async def cmd_menu(message: types.Message):
+    await message.answer("Вот твое главное меню. Выбери нужное действие:")
