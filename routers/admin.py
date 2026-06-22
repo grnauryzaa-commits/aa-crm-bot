@@ -1,4 +1,8 @@
-from aiogram import Router
+from aiogram import Router, types
+from aiogram.filters import Command
 
 router = Router()
-# Твоя логика панели модерации
+
+@router.message(Command("admin"))
+async def cmd_admin(message: types.Message):
+    await message.answer("Добро пожаловать в панель администратора. Здесь вы можете модерировать анкеты.")

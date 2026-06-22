@@ -2,10 +2,9 @@ from aiogram import Router, types
 from aiogram.filters import Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-# 1. Создаем роутер
 router = Router()
 
-# 2. Создаем клавиатуру главного меню (которую ищет start.py)
+# Создаем клавиатуру в одном месте
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="➕ Стать спонсором")],
@@ -15,7 +14,6 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# 3. Хэндлер на команду /menu
 @router.message(Command("menu"))
 async def cmd_menu(message: types.Message):
-    await message.answer("Вот твое главное меню:", reply_markup=main_menu)
+    await message.answer("Вот твое главное меню. Выбери нужный раздел:", reply_markup=main_menu)

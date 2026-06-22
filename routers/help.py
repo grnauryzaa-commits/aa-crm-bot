@@ -1,12 +1,9 @@
-from aiogram import Router, F
-from aiogram.types import Message
+from aiogram import Router, F, types
+from aiogram.filters import Command
 
 router = Router()
 
-@router.message(F.text == "🆘 Мне тяжело")
-async def help_handler(message: Message):
-    await message.answer(
-        "🤝 Ты не один. Прямо сейчас сделай глубокий вдох.\n"
-        "Попробуй найти спонсора в меню, позвонить доверенному лицу или посетить онлайн-собрание.\n"
-        "Главное — один день за раз. Только сегодня."
-    )
+@router.message(Command("help"))
+@router.message(F.text == "❓ Помощь")
+async def cmd_help(message: types.Message):
+    await message.answer("🆘 Раздел помощи. Если у вас возникли вопросы по работе бота или групп, напишите нашему администратору.")
