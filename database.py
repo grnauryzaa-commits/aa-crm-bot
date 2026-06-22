@@ -1,73 +1,33 @@
-import os
+import logging
 import psycopg2
 from psycopg2.extras import DictCursor
+from config import DATABASE_URL
 
-# Получаем строку подключения из переменных окружения Railway
-DATABASE_URL = os.getenv("DATABASE_URL")
+async def init_db():
+    """Создает таблицу спонсоров, если её ещё нет в PostgreSQL"""
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sponsors (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT UNIQUE NOT NULL,
+                username VARCHAR(255),
+                name VARCHAR(255),
+                age INT,
+                sobriety VARCHAR(255),
+                city VARCHAR(255),
+                phone VARCHAR(255),
+                status VARCHAR(50) DEFAULT 'pending'
+            );
+        """)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logging.info("База данных PostgreSQL успешно проверена/инициализирована.")
+    except Exception as e:
+        logging.error(f"Ошибка при инициализации базы данных: {e}")
 
-def get_connection():
-    # Создаем подключение к PostgreSQL
-    return psycopg2.connect(DATABASE_URL, sslmode="require")
-
-def init_db():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    # В PostgreSQL синтаксис немного отличается (SERIAL вместо AUTOINCREMENT)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS sponsors (
-        id SERIAL PRIMARY KEY,
-        name TEXT,
-        age TEXT,
-        identity TEXT,
-        sobriety TEXT,
-        city TEXT,
-        formats TEXT,
-        telegram TEXT,
-        phone TEXT,
-        about TEXT
-    );
-    """)
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
-def add_sponsor(data):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    # В PostgreSQL плейсхолдеры — %s вместо ?
-    cur.execute("""
-    INSERT INTO sponsors
-    (name, age, identity, sobriety, city, formats, telegram, phone, about)
-    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-    """, data)
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-
-def get_all():
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id, name, city, sobriety FROM sponsors;")
-    data = cur.fetchall()
-
-    cur.close()
-    conn.close()
-    return data
-
-
-def get_sponsor_by_id(sponsor_id):
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("SELECT id, name, age, identity, sobriety, city, formats, telegram, phone, about FROM sponsors WHERE id=%s;", (sponsor_id,))
-    data = cur.fetchone()
-
-    cur.close()
-    conn.close()
-    return data
+def get_db_connection():
+    """Возвращает готовое подключение к PostgreSQL с DictCursor"""
+    return psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)

@@ -1,8 +1,10 @@
 import os
 
-# Бот автоматически берет токен из панели Railway
+# Берем токен и ссылку на БД из переменных окружения Railway
 TOKEN = os.getenv("TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Бот будет брать список админов из Railway. 
-# Если переменная ADMIN_IDS в Railway пустая, по умолчанию запишется ваш ID: 7374545230
-ADMIN_IDS = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "7374545230").split(",") if x.strip()]
+if not TOKEN:
+    raise ValueError("ОШИБКА: Переменная окружения 'TOKEN' не найдена!")
+if not DATABASE_URL:
+    raise ValueError("ОШИБКА: Переменная окружения 'DATABASE_URL' не найдена!")
