@@ -1,4 +1,2 @@
-from aiogram import Router
-
-router = Router()
-# Твоя логика расписаний
+aiogram==3.13.1
+psycopg2-binary==2.9.9
