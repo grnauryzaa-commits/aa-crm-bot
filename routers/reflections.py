@@ -24,33 +24,40 @@ async def show_reflections(message: types.Message):
 
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Находим блок с контентом (на mos-nach это обычно основной контейнер #content или #main)
+        # Находим контейнер контента
         content_block = soup.find(id='content') or soup.find(id='main') or soup.find('article')
         
         if content_block:
-            # Ищем заголовок дня (дата + название)
+            # Ищем заголовок дня
             title_element = content_block.find('h1', class_='entry-title') or content_block.find('h1') or content_block.find('h2')
             title_text = title_element.get_text(strip=True) if title_element else "Ежедневное размышление"
             
-            # Собираем все абзацы текста
+            # Собираем все абзацы
             paragraphs = [p.get_text(strip=True) for p in content_block.find_all('p') if p.get_text(strip=True)]
             
-            # Фильтруем технический мусор сайта внизу страницы
+            # Фильтруем текст, отсекая технический мусор и копирайты внизу страницы
             clean_paragraphs = []
             for p in paragraphs:
-                if any(word in p for word in ["Посмотреть размышления", "Архив размышлений", "Предыдущее", "Следующее", "Перейти к"]):
-                    continue
+                # Маркеры начала «подвала» сайта, после которых полезный текст заканчивается
+                stop_words = [
+                    "место под альтернативный", 
+                    "издание было подготовлено", 
+                    "alcoholics anonymous", 
+                    "анонимные алкоголики ©",
+                    "посмотреть размышления",
+                    "архив размышлений"
+                ]
+                
+                # Если встретили любой из стоп-маркеров — прекращаем сбор абзацев вообще
+                if any(word in p.lower() for word in stop_words):
+                    break
+                    
                 clean_paragraphs.append(p)
 
+            # Форматируем вывод
             if len(clean_paragraphs) >= 3:
-                # На сайте mos-nach структура обычно такая:
-                # 0 - Дата/заголовок (иногда дублируется)
-                # 1 - Цитата Билла
-                # 2 - Источник (книга, страница)
-                # Остальное - размышление
-                
-                # Проверим, не дублирует ли первый абзац заголовок h1
                 start_idx = 0
+                # Убираем дубль заголовка, если первый абзац совпадает с h1
                 if title_text.lower() in clean_paragraphs[0].lower() or len(clean_paragraphs[0]) < 10:
                     start_idx = 1
                 
@@ -65,20 +72,14 @@ async def show_reflections(message: types.Message):
                     f"{main_text}"
                 )
             else:
-                # Если абзацев мало, выводим всё как один сплошной текст
                 main_text = "\n\n".join(clean_paragraphs)
                 text = f"📘 **{title_text}**\n\n{main_text}"
         else:
-            # Если вообще не нашли блоков контента, собираем текст по всем параграфам страницы
-            paragraphs = [p.get_text(strip=True) for p in soup.find_all('p') if p.get_text(strip=True)]
-            if paragraphs:
-                text = "📘 **Ежедневное размышление**\n\n" + "\n\n".join(paragraphs[:8]) # Первые 8 абзацев
-            else:
-                raise Exception("Не удалось найти текстовые блоки на странице")
+            raise Exception("Не удалось определить контентный блок сайта")
 
         await waiting_message.delete()
         
-        # Если текст получился слишком длинным для Markdown, отправляем как обычный текст
+        # Безопасная отправка с обработкой ошибок форматирования Markdown
         try:
             await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
         except Exception:
@@ -88,7 +89,7 @@ async def show_reflections(message: types.Message):
         logging.error(f"Ошибка парсинга с mos-nach.ru: {e}")
         await waiting_message.delete()
         await message.answer(
-            f"⚠️ Бот зашел на сайт, но структура страницы изменилась.\n"
-            f"Ты можешь прочесть размышление по прямой ссылке:\n\n🔗 [Читать на mos-nach.ru]({url})",
+            f"⚠️ Ошибка отображения текста.\n"
+            f"Ты можешь открыть размышление на сегодня по прямой ссылке:\n\n🔗 [Читать на mos-nach.ru]({url})",
             parse_mode="Markdown"
         )
