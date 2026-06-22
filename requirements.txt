@@ -1,12 +1,2 @@
-aiogram
-aiohttp
-aiosignal
-attrs
-certifi
-frozenlist
-idna
-magic-filter
-multidict
-pydantic
-typing_extensions
-yarl
+aiogram==3.13.1
+psycopg2-binary==2.9.9
