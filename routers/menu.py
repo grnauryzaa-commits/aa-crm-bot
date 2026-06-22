@@ -4,9 +4,10 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 router = Router()
 
-# Создаем клавиатуру в одном месте
+# Обновленная клавиатура с кнопкой Размышлений
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
+        [KeyboardButton(text="📘 Ежедневные размышления")],
         [KeyboardButton(text="➕ Стать спонсором")],
         [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="📅 Расписание")],
         [KeyboardButton(text="❓ Помощь")]
