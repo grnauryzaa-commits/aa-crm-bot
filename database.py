@@ -1,49 +1,94 @@
-import logging
 import psycopg2
-from psycopg2.extras import DictCursor
-from config import DATABASE_URL
+from psycopg2.extras import RealDictCursor
+from config import DB_URL  # Предполагаем, что у тебя там ссылка на базу Railway
 
 async def init_db():
-    """Создает таблицы спонсоров и размышлений, если их еще нет"""
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cursor = conn.cursor()
-        
-        # Таблица спонсоров
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS sponsors (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT UNIQUE NOT NULL,
-                username VARCHAR(255),
-                name VARCHAR(255),
-                age INT,
-                sobriety VARCHAR(255),
-                city VARCHAR(255),
-                phone VARCHAR(255),
-                status VARCHAR(50) DEFAULT 'pending'
-            );
-        """)
-        
-        # Новая таблица для Ежедневных размышлений
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS daily_reflections (
-                id SERIAL PRIMARY KEY,
-                day_month VARCHAR(10) UNIQUE NOT NULL, -- Формат: "22-06"
-                date_title VARCHAR(50) NOT NULL,       -- Например: "22 июня"
-                heading VARCHAR(255) NOT NULL,         -- Например: "СЕГОДНЯ Я СВОБОДЕН"
-                quote TEXT NOT NULL,                   -- Цитата Билла
-                source VARCHAR(100) NOT NULL,          -- Откуда цитата
-                reflection TEXT NOT NULL               -- Основной текст размышления
-            );
-        """)
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        logging.info("База данных PostgreSQL успешно инициализирована (таблицы проверены).")
-    except Exception as e:
-        logging.error(f"Ошибка при инициализации базы данных: {e}")
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    # Таблица активных спонсоров
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sponsors (
+            tg_id BIGINT PRIMARY KEY,
+            name VARCHAR(100),
+            age VARCHAR(10),
+            sobriety VARCHAR(100),
+            city VARCHAR(100),
+            program_info TEXT,
+            username VARCHAR(100),
+            phone VARCHAR(50)
+        );
+    """)
+    # Таблица черновиков на проверку админу
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS sponsor_drafts (
+            tg_id BIGINT PRIMARY KEY,
+            name VARCHAR(100),
+            age VARCHAR(10),
+            sobriety VARCHAR(100),
+            city VARCHAR(100),
+            program_info TEXT,
+            username VARCHAR(100),
+            phone VARCHAR(50)
+        );
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
 
-def get_db_connection():
-    """Возвращает готовое подключение к PostgreSQL с DictCursor"""
-    return psycopg2.connect(DATABASE_URL, cursor_factory=DictCursor)
+async def get_sponsor_by_tg_id(tg_id: int):
+    conn = psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM sponsors WHERE tg_id = %s", (tg_id,))
+    res = cur.fetchone()
+    cur.close()
+    conn.close()
+    return res
+
+async def save_sponsor_draft(tg_id: int, data: dict):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO sponsor_drafts (tg_id, name, age, sobriety, city, program_info, username, phone)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (tg_id) DO UPDATE SET
+            name = EXCLUDED.name, age = EXCLUDED.age, sobriety = EXCLUDED.sobriety,
+            city = EXCLUDED.city, program_info = EXCLUDED.program_info,
+            username = EXCLUDED.username, phone = EXCLUDED.phone;
+    """, (tg_id, data['name'], data['age'], data['sobriety'], data['city'], data['program_info'], data['username'], data.get('phone', 'Не указан')))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+async def approve_sponsor_draft(tg_id: int):
+    conn = psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
+    cur = conn.cursor()
+    # Берем данные из черновика
+    cur.execute("SELECT * FROM sponsor_drafts WHERE tg_id = %s", (tg_id,))
+    draft = cur.fetchone()
+    if draft:
+        # Переносим или обновляем в основной таблице
+        cur.execute("""
+            INSERT INTO sponsors (tg_id, name, age, sobriety, city, program_info, username, phone)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (tg_id) DO UPDATE SET
+                name = EXCLUDED.name, age = EXCLUDED.age, sobriety = EXCLUDED.sobriety,
+                city = EXCLUDED.city, program_info = EXCLUDED.program_info,
+                username = EXCLUDED.username, phone = EXCLUDED.phone;
+        """, (draft['tg_id'], draft['name'], draft['age'], draft['sobriety'], draft['city'], draft['program_info'], draft['username'], draft['phone']))
+        # Удаляем из черновиков
+        cur.execute("DELETE FROM sponsor_drafts WHERE tg_id = %s", (tg_id,))
+        conn.commit()
+        res = True
+    else:
+        res = False
+    cur.close()
+    conn.close()
+    return res
+
+async def delete_sponsor_draft(tg_id: int):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM sponsor_drafts WHERE tg_id = %s", (tg_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
