@@ -5,7 +5,6 @@ import logging
 
 router = Router()
 
-# Универсальная и надежная функция-парсер
 async def get_reflection_text():
     url = "https://mos-nach.ru/thinks/"
     headers = {
@@ -21,11 +20,11 @@ async def get_reflection_text():
 
         soup = BeautifulSoup(html, 'html.parser')
         
-        # Шаг 1: Пытаемся найти заголовок
+        # Находим заголовок страницы (Дата)
         title_element = soup.find('h1', class_='entry-title') or soup.find('h1') or soup.find('h2')
         title_text = title_element.get_text(strip=True) if title_element else "Ежедневное размышление"
         
-        # Шаг 2: Ищем контентный блок. Если его нет — берем все параграфы со страницы
+        # Находим контейнер с текстом
         content_block = soup.find(id='content') or soup.find(id='main') or soup.find('article') or soup.find('main')
         if content_block:
             paragraphs = [p.get_text(strip=True) for p in content_block.find_all('p') if p.get_text(strip=True)]
@@ -33,16 +32,14 @@ async def get_reflection_text():
             paragraphs = [p.get_text(strip=True) for p in soup.find_all('p') if p.get_text(strip=True)]
 
         if not paragraphs:
-            logging.error("На странице вообще не найдено тегов <p>")
             return None
 
-        # Шаг 3: Фильтруем текст от технического мусора внизу страницы
+        # Фильтруем текст. Отрезаем ТОЛЬКО реальный подвал и копирайты сайта в самом низу
         clean_paragraphs = []
         for p in paragraphs:
             stop_words = [
                 "место под альтернативный", 
                 "издание было подготовлено", 
-                "alcoholics anonymous", 
                 "анонимные алкоголики ©",
                 "посмотреть размышления",
                 "архив размышлений",
@@ -53,25 +50,20 @@ async def get_reflection_text():
                 break
             clean_paragraphs.append(p)
 
-        # Шаг 4: Форматируем собранный текст
+        # Собираем все абзацы в единый текст
         if len(clean_paragraphs) >= 3:
             start_idx = 0
-            # Если первый абзац дублирует заголовок, сдвигаем индекс
+            # Если первый абзац дублирует H1 заголовок, пропускаем его
             if title_text.lower() in clean_paragraphs[0].lower() or len(clean_paragraphs[0]) < 12:
                 start_idx = 1
             
-            quote = clean_paragraphs[start_idx]
-            source = clean_paragraphs[start_idx + 1] if (start_idx + 1) < len(clean_paragraphs) else ""
-            main_text = "\n\n".join(clean_paragraphs[start_idx + 2:])
+            # На mos-nach структура может плавать, поэтому мы не будем жестко резать на цитату/источник,
+            # а просто красиво выведем всё, что получили, убрав дубли
+            final_paragraphs = clean_paragraphs[start_idx:]
+            main_text = "\n\n".join(final_paragraphs)
             
-            return (
-                f"📘 **{title_text}**\n\n"
-                f"«{quote}»\n"
-                f"_* {source}_\n\n"
-                f"{main_text}"
-            )
+            return f"📘 **{title_text}**\n\n{main_text}"
         else:
-            # Если абзацев мало, просто объединяем всё, что нашли
             main_text = "\n\n".join(clean_paragraphs)
             return f"📘 **{title_text}**\n\n{main_text}"
 
@@ -79,7 +71,6 @@ async def get_reflection_text():
         logging.error(f"Ошибка при парсинге: {e}")
         return None
 
-# Хэндлер для кнопки в боте
 @router.message(F.text == "📘 Ежедневные размышления")
 async def show_reflections(message: types.Message):
     waiting_message = await message.answer("🔄 Загружаю сегодняшнее размышление...")
@@ -90,7 +81,6 @@ async def show_reflections(message: types.Message):
         try:
             await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
         except Exception:
-            # На случай, если в тексте попадутся спецсимволы, ломающие Markdown
             clean_text = text.replace("**", "").replace("_*", "").replace("_", "")
             await message.answer(clean_text, disable_web_page_preview=True)
     else:
@@ -101,9 +91,8 @@ async def show_reflections(message: types.Message):
             parse_mode="Markdown"
         )
 
-# Функция автоматической отправки в канал по таймеру
 async def send_daily_reflection_to_channel(bot: Bot):
-    # ⚠️ НЕ ЗАБУДЬТЕ УКАЗАТЬ ТЕГ ВАШЕГО КАНАЛА НАУРЫЗ С СИМВОЛОМ @
+    # Укажи здесь тег твоего канала вместо заглушки
     CHANNEL_ID = "@твой_канал_наурыз" 
     
     logging.info("Запуск автоматической отправки размышлений в канал...")
@@ -119,5 +108,3 @@ async def send_daily_reflection_to_channel(bot: Bot):
                 await bot.send_message(chat_id=CHANNEL_ID, text=clean_text, disable_web_page_preview=True)
             except Exception as ex:
                 logging.error(f"Не удалось отправить сообщение в канал: {ex}")
-    else:
-        logging.error("Сайт не отдал текст для автоматической рассылки.")
