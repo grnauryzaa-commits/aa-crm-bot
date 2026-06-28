@@ -1,24 +1,9 @@
-import asyncio
-import logging
-from aiogram import Bot, Dispatcher
-from config import BOT_TOKEN
-# Импортируем ВСЕ роутеры, включая новые
-from routers import form, sponsors, sponsors_mod, help, schedules
+from aiogram import Router, F, types
+from config import TOKEN
 
-async def main():
-    bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
+router = Router()
 
-    # Подключаем ВСЕ роутеры в диспетчер
-    dp.include_router(form.router)
-    dp.include_router(sponsors.router)
-    dp.include_router(sponsors_mod.router)
-    dp.include_router(help.router)      # Обязательно
-    dp.include_router(schedules.router) # Обязательно
-
-    logging.info("Бот успешно запущен!")
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+# Здесь находится твоя логика клавиатуры и функций
+def get_main_menu_keyboard():
+    # Твой код формирования клавиатуры
+    pass
