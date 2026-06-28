@@ -1,31 +1,50 @@
-from aiogram import Router, F, types
-import psycopg2
+from aiogram import Router, types
+from aiogram.filters import Command
 from datetime import datetime
-from config import DATABASE_URL as DB_URL
+import psycopg2
+
+# Убедитесь, что эта ссылка совпадает с той, что в fill_db.py
+DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 
 router = Router()
 
-@router.message(F.text == "📖 Ежедневные размышления")
-async def show_reflections(message: types.Message):
-    day = datetime.now().day
-    month = datetime.now().month
-    
+@router.message(lambda message: message.text == "📖 Ежедневные размышления")
+@router.message(Command("daily"))
+async def send_reflection(message: types.Message):
+    # Получаем текущую дату
+    today = datetime.now()
+    day = today.day
+    month = today.month
+
     try:
+        # Подключаемся к базе
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        cur.execute(
-            "SELECT title, text FROM reflections_archive WHERE day = %s AND month = %s", 
-            (day, month)
-        )
+        # Запрашиваем данные за сегодняшнее число
+        cur.execute("""
+            SELECT title, text FROM reflections_archive 
+            WHERE day = %s AND month = %s
+        """, (day, month))
+        
         row = cur.fetchone()
         cur.close()
         conn.close()
-        
+
         if row:
-            await message.answer(f"📖 **{row[0]}**\n\n{row[1]}")
+            title, text = row
+            # Формируем ответ
+            response = f"📖 **{title}**\n\n{text}"
+            
+            # Отправляем сообщение частями, если оно слишком длинное (Telegram лимит 4096 символов)
+            if len(response) > 4096:
+                for x in range(0, len(response), 4096):
+                    await message.answer(response[x:x+4096])
+            else:
+                await message.answer(response)
         else:
-            await message.answer("На сегодня размышлений пока нет.")
+            await message.answer("Размышление на сегодня пока не найдено в архиве.")
+            
     except Exception as e:
-        await message.answer("Ошибка БД.")
-        print(f"Error: {e}")
+        print(f"Ошибка при работе с базой: {e}")
+        await message.answer("Произошла ошибка при загрузке размышления. Попробуйте позже.")
