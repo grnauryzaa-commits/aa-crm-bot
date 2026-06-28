@@ -12,7 +12,7 @@ async def init_db():
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        # 1. СОЗДАНИЕ ТАБЛИЦЫ SPONSORS И ПРОВЕРКА КОЛОНОК
+        # 1. СОЗДАНИЕ ТАБЛИЦЫ SPONSORS
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsors (
                 user_id BIGINT UNIQUE PRIMARY KEY,
@@ -27,14 +27,7 @@ async def init_db():
             );
         """)
         
-        # 2. ГАРАНТИРУЕМ ПРАВИЛЬНУЮ СТРУКТУРУ ТАБЛИЦЫ ЧЕРНОВИКОВ
-        try:
-            cur.execute("SELECT user_id FROM sponsor_drafts LIMIT 1;")
-        except Exception:
-            conn.rollback()
-            logging.warning("⚠️ Таблица sponsor_drafts повреждена или не содержит user_id. Пересоздаем...")
-            cur.execute("DROP TABLE IF EXISTS sponsor_drafts;")
-            
+        # 2. СОЗДАНИЕ ТАБЛИЦЫ ЧЕРНОВИКОВ (БЕЗОПАСНОЕ)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsor_drafts (
                 user_id BIGINT PRIMARY KEY,
@@ -84,4 +77,50 @@ def _get_sponsor_sync(user_id):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur
+        cur.execute("SELECT user_id FROM sponsors WHERE user_id = %s;", (user_id,))
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+        return res
+    except Exception as e:
+        logging.error(f"Ошибка выполнения _get_sponsor_sync: {e}")
+        return None
+
+async def get_sponsor_by_tg_id(user_id):
+    """Проверяет, есть ли пользователь в базе активных спонсоров"""
+    return await asyncio.to_thread(_get_sponsor_sync, user_id)
+
+
+def _save_draft_sync(user_id, data):
+    conn = psycopg2.connect(DB_URL)
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO sponsor_drafts (user_id, name, gender, age, sobriety, city, program_info, username, phone)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            name = EXCLUDED.name, 
+            gender = EXCLUDED.gender,
+            age = EXCLUDED.age, 
+            sobriety = EXCLUDED.sobriety,
+            city = EXCLUDED.city, 
+            program_info = EXCLUDED.program_info,
+            username = EXCLUDED.username, 
+            phone = EXCLUDED.phone;
+    """, (
+        user_id, 
+        data.get('name'), 
+        data.get('gender'),
+        int(data.get('age', 0)),
+        data.get('sobriety'), 
+        data.get('city'), 
+        data.get('program_info'),
+        data.get('username'), 
+        data.get('phone')
+    ))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+async def save_sponsor_draft(user_id, data):
+    """Сохраняет заполненную анкету пользователя в таблицу черновиков"""
+    await asyncio.to_thread(_save_draft_sync, user_id, data)
