@@ -1,6 +1,5 @@
 from aiogram.fsm.state import State, StatesGroup
 
 class SponsorForm(StatesGroup):
-    gender = State()
-    phone = State()
-    # добавь другие состояния, если они есть
+    gender = State()   # Шаг 1: Пол
+    phone = State()    # Шаг 2: Телефон

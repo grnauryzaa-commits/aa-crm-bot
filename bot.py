@@ -5,13 +5,10 @@ from aiogram import Bot, Dispatcher
 from config import TOKEN
 from database import init_db
 
-# Импортируем все роутеры
+# Импорт роутеров
 from routers.start import router as start_router
 from routers.menu import router as menu_router
 from routers.form import router as form_router
-from routers.sponsors import router as sponsors_router
-from routers.sponsors_mod import router as sponsors_mod_router
-from routers.reflections import router as reflections_router
 from routers.help import router as help_router
 from routers.schedules import router as schedules_router
 from routers.traditions import router as traditions_router
@@ -23,16 +20,10 @@ async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     
+    # Регистрация роутеров
     dp.include_routers(
-        start_router,
-        menu_router,
-        form_router,
-        sponsors_router,
-        sponsors_mod_router,
-        reflections_router,
-        help_router,
-        schedules_router,
-        traditions_router
+        start_router, menu_router, form_router, 
+        help_router, schedules_router, traditions_router
     )
     
     await bot.delete_webhook(drop_pending_updates=True)

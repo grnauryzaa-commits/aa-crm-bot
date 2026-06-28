@@ -1,9 +1,11 @@
 from aiogram import Router, F, types
-from config import TOKEN
+from aiogram.fsm.context import FSMContext
+from routers.states import SponsorForm
+from routers.form import get_cancel_kb # импортируем клавиатуру из form.py
 
 router = Router()
 
-# Здесь находится твоя логика клавиатуры и функций
-def get_main_menu_keyboard():
-    # Твой код формирования клавиатуры
-    pass
+@router.message(F.text == "Заполнить анкету")
+async def start_form(message: types.Message, state: FSMContext):
+    await message.answer("Начинаем заполнение.\nКакой твой пол?", reply_markup=get_cancel_kb())
+    await state.set_state(SponsorForm.gender)
