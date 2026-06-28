@@ -18,19 +18,21 @@ class SponsorForm(StatesGroup):
     program_info = State()
     phone = State()
 
-# 1. СТАРТ АНКЕТЫ (Кнопка теперь строго соответствует скриншоту)
+# 1. СТАРТ АНКЕТЫ
 @router.message(F.text.in_({"➕ Стать спонсором", "✍️ Редактировать карточку"}))
 async def start_form(message: types.Message, state: FSMContext):
-    existing = await db.get_sponsor_by_tg_id(message.from_user.id)
-    
-    if existing:
-        kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="✍️ Редактировать карточку")]], resize_keyboard=True)
-        await message.answer(
-            "ℹ️ Ты уже зарегистрирован в базе спонсоров.\n\n"
-            "Если твои данные изменились, нажми кнопку ниже, чтобы обновить карточку:", 
-            reply_markup=kb
-        )
-        return
+    try:
+        existing = await db.get_sponsor_by_tg_id(message.from_user.id)
+        if existing:
+            kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="✍️ Редактировать карточку")]], resize_keyboard=True)
+            await message.answer(
+                "ℹ️ Ты уже зарегистрирован в базе спонсоров.\n\n"
+                "Если твои данные изменились, нажми кнопку ниже, чтобы обновить карточку:", 
+                reply_markup=kb
+            )
+            return
+    except Exception as e:
+        logging.error(f"Ошибка проверки спонсора в БД: {e}")
 
     await message.answer("🕊 **Заполнение карточки Спонсора АА**\n\n📝 **Как к тебе обращаться?** (Введи имя):", reply_markup=types.ReplyKeyboardRemove())
     await state.set_state(SponsorForm.name)
@@ -79,13 +81,12 @@ async def process_program(message: types.Message, state: FSMContext):
     )
     await state.set_state(SponsorForm.phone)
 
-# 7. ФИНАЛ: НОМЕР ТЕЛЕФОНА И ЗАВЕРШЕНИЕ (Исправленный хэндлер)
+# 7. ФИНАЛ: НОМЕР ТЕЛЕФОНА И ЗАВЕРШЕНИЕ
 @router.message(SponsorForm.phone)
 async def process_phone(message: types.Message, state: FSMContext):
     username = f"@{message.from_user.username}" if message.from_user.username else "Скрыт"
     phone_val = message.text
     
-    # Защита от зависания при нажатии кнопки скрытия номера
     if "Не указывать номер" in message.text or "только ТГ" in message.text:
         phone_val = "Не указан"
         if username == "Скрыт":
@@ -95,8 +96,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
 
-    # ИСПРАВЛЕНИЕ ОШИБКИ БАЗЫ ДАННЫХ:
-    # Извлекаем из возраста только цифры, так как колонка age в БД имеет тип INT
+    # Извлекаем из возраста только цифры для базы данных
     age_raw = str(data.get('age', '0'))
     age_digits = ''.join(filter(str.isdigit, age_raw))
     data['age'] = int(age_digits) if age_digits else 0
@@ -125,7 +125,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         main_kb = await get_main_menu_keyboard() 
         await message.answer(card_text, parse_mode="Markdown", reply_markup=main_kb)
         
-        # 3. Отправляем карточку с инлайн-кнопками тебе в личку на проверку
+        # 3. Отправляем карточку тебе на модерацию
         await send_to_moderation(message.bot, message.from_user.id, data)
 
     except Exception as e:
@@ -133,7 +133,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         from routers.menu import get_main_menu_keyboard
         main_kb = await get_main_menu_keyboard()
         await message.answer(
-            f"❌ Произошла непредвиденная ошибка базы данных при сохранении.\n"
-            f"Администрация уже знает об этом. Пожалуйста, попробуй позже.\n\n`Тех. лог: {e}`",
+            f"❌ Произошла ошибка базы данных.\n"
+            f"Пожалуйста, попробуй позже.\n\n`Тех. лог: {e}`",
             reply_markup=main_kb
         )
