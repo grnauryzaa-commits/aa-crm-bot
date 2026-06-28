@@ -7,16 +7,17 @@ from config import DATABASE_URL as DB_URL
 logging.basicConfig(level=logging.INFO)
 
 async def init_db():
-    logging.info("🚀 Запуск принудительного обновления структуры базы данных...")
+    logging.info("🚀 Запуск принудительного обновления структуры базы данных (добавление пола)...")
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        # 1. СОЗДАНИЕ ТАБЛИЦЫ SPONSORS (если её нет) И ПРОВЕРКА КОЛОНОК
+        # 1. СОЗДАНИЕ ТАБЛИЦЫ SPONSORS И ПРОВЕРКА КОЛОНОК
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsors (
                 user_id BIGINT UNIQUE PRIMARY KEY,
                 name VARCHAR(100),
+                gender VARCHAR(10),
                 age INT,
                 sobriety VARCHAR(100),
                 city VARCHAR(100),
@@ -26,8 +27,7 @@ async def init_db():
             );
         """)
         
-        # 2. ИСПРАВЛЕНИЕ ОШИБКИ: Гарантируем правильную структуру таблицы черновиков
-        # Если таблица sponsor_drafts повреждена или в ней нет user_id, мы пересоздадим её правильно
+        # 2. ГАРАНТИРУЕМ ПРАВИЛЬНУЮ СТРУКТУРУ ТАБЛИЦЫ ЧЕРНОВИКОВ
         try:
             cur.execute("SELECT user_id FROM sponsor_drafts LIMIT 1;")
         except Exception:
@@ -39,6 +39,7 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS sponsor_drafts (
                 user_id BIGINT PRIMARY KEY,
                 name VARCHAR(100),
+                gender VARCHAR(10),
                 age INT,
                 sobriety VARCHAR(100),
                 city VARCHAR(100),
@@ -48,11 +49,13 @@ async def init_db():
             );
         """)
 
-        # 3. ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Проверяем наличие колонки program_info в таблице sponsors
+        # ПРИНУДИТЕЛЬНО ДОБАВЛЯЕМ КОЛОНКИ, ЕСЛИ ИХ НЕТ (ДЛЯ БЕЗОПАСНОГО ОБНОВЛЕНИЯ)
+        cur.execute("ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS gender VARCHAR(10);")
+        cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS gender VARCHAR(10);")
         cur.execute("ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS program_info TEXT;")
         cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS program_info TEXT;")
         
-        # 4. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ЕЖЕДНЕВНЫХ РАЗМЫШЛЕНИЙ
+        # 3. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ЕЖЕДНЕВНЫХ РАЗМЫШЛЕНИЙ
         cur.execute("""
             CREATE TABLE IF NOT EXISTS reflections_archive (
                 day INT,
@@ -72,57 +75,13 @@ async def init_db():
         logging.error(f"❌ Критическая ошибка инициализации БД: {e}")
         raise e
 
+
 # =====================================================================
-# АСИНХРОННЫЕ ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ С БАЗОЙ ДАННЫХ
+# ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ С БАЗОЙ ДАННЫХ
 # =====================================================================
 
 def _get_sponsor_sync(user_id):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur.execute("SELECT user_id FROM sponsors WHERE user_id = %s;", (user_id,))
-        res = cur.fetchone()
-        cur.close()
-        conn.close()
-        return res
-    except Exception as e:
-        logging.error(f"Ошибка выполнения _get_sponsor_sync: {e}")
-        return None
-
-async def get_sponsor_by_tg_id(user_id):
-    """Проверяет, есть ли пользователь в базе активных спонсоров"""
-    return await asyncio.to_thread(_get_sponsor_sync, user_id)
-
-
-def _save_draft_sync(user_id, data):
-    conn = psycopg2.connect(DB_URL)
-    cur = conn.cursor()
-    # Записываем анкету в проверенную таблицу sponsor_drafts
-    cur.execute("""
-        INSERT INTO sponsor_drafts (user_id, name, age, sobriety, city, program_info, username, phone)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (user_id) DO UPDATE SET
-            name = EXCLUDED.name, 
-            age = EXCLUDED.age, 
-            sobriety = EXCLUDED.sobriety,
-            city = EXCLUDED.city, 
-            program_info = EXCLUDED.program_info,
-            username = EXCLUDED.username, 
-            phone = EXCLUDED.phone;
-    """, (
-        user_id, 
-        data.get('name'), 
-        int(data.get('age', 0)),
-        data.get('sobriety'), 
-        data.get('city'), 
-        data.get('program_info'),
-        data.get('username'), 
-        data.get('phone')
-    ))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-async def save_sponsor_draft(user_id, data):
-    """Сохраняет заполненную анкету пользователя в таблицу черновиков"""
-    await asyncio.to_thread(_save_draft_sync, user_id, data)
+        cur
