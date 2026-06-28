@@ -1,12 +1,14 @@
 from aiogram import Router, F, types
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import asyncio
+import logging
 from config import DATABASE_URL as DB_URL
 
 router = Router()
 
 # Функция для получения списка всех активных и одобренных спонсоров
-def get_all_active_sponsors():
+def _fetch_sponsors_from_db():
     conn = psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
     cur = conn.cursor()
     # Берем только тех, кто прошел модерацию и сохранен в основной таблице sponsors
@@ -19,9 +21,13 @@ def get_all_active_sponsors():
 @router.message(F.text == "🤝 Спонсоры")
 async def show_sponsors_list(message: types.Message):
     try:
-        sponsors = get_all_active_sponsors()
+        # ИСПРАВЛЕНИЕ: Запускаем блокирующую функцию синхронного коннекта в безопасном фоновом потоке асинхронно
+        sponsors = await asyncio.to_thread(_fetch_sponsors_from_db)
     except Exception as e:
-        await message.answer("⚠️ Произошла ошибка при подключении к базе данных. Попробуйте позже.")
+        # Если что-то пойдет не так, мы увидим реальную причину в логах Railway
+        logging.error(f"Критическая ошибка при чтении спонсоров: {e}")
+        # Временно выводим текст ошибки в чат, чтобы точно знать, если дело не в асинхронности
+        await message.answer(f"⚠️ Ошибка при подключении к базе данных:\n`{str(e)}`", parse_mode="Markdown")
         return
 
     if not sponsors:
