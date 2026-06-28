@@ -4,7 +4,7 @@ router = Router()
 
 @router.message(F.text == "📅 Расписание")
 async def show_schedule(message: types.Message):
-    schedule_text = (
+    await message.answer(
         "📅 РАСПИСАНИЕ ЖИВОЙ ОФФЛАЙН ГРУППЫ «НАУРЫЗ»:\n\n"
         "• Вторник: 19:00 - 20:30\n"
         "• Четверг: 19:00 - 20:30\n"
@@ -13,4 +13,3 @@ async def show_schedule(message: types.Message):
         "• Воскресенье: 15:00 - 16:30\n\n"
         "Ждем вас! Приходите вовремя, группа открыта для всех."
     )
-    await message.answer(schedule_text)
