@@ -1,14 +1,11 @@
 import asyncio
 import logging
+import datetime
 from aiogram import Bot, Dispatcher
 from config import TOKEN
 from database import init_db
 
-# Импорт планировщика задач
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pytz import timezone
-
-# Импортируем роутеры и функцию рассылки
+# Импортируем роутеры
 from routers.start import router as start_router
 from routers.menu import router as menu_router
 from routers.form import router as form_router
@@ -20,6 +17,27 @@ from routers.reflections import router as reflections_router
 from routers.reflections import send_daily_reflection_to_channel  # Импортируем функцию рассылки
 
 logging.basicConfig(level=logging.INFO)
+
+# НАДЕЖНЫЙ ФОНОВЫЙ ПЛАНИРОВЩИК БЕЗ ВНЕШНИХ БИБЛИОТЕК
+async def daily_scheduler(bot: Bot):
+    logging.info("Фоновый планировщик утренней рассылки успешно запущен!")
+    while True:
+        # Получаем текущее время сервера (с учетом переменной TZ=Asia/Almaty в Railway)
+        now = datetime.datetime.now()
+        
+        # Условие: если сейчас ровно 07 часов и 00 минут
+        if now.hour == 7 and now.minute == 0:
+            logging.info("Наступило 07:00 утра. Запускаю утреннюю рассылку размышлений...")
+            try:
+                await send_daily_reflection_to_channel(bot)
+            except Exception as e:
+                logging.error(f"Ошибка при автоматической отправке рассылки: {e}")
+            
+            # Спим 65 секунд, чтобы внутри этой же минуты рассылка не сработала повторно
+            await asyncio.sleep(65)
+        
+        # Проверяем время каждые 30 секунд
+        await asyncio.sleep(30)
 
 async def main():
     await init_db()
@@ -38,21 +56,9 @@ async def main():
         reflections_router
     )
 
-    # НАСТРОЙКА АВТОРАССЫЛКИ В КАНАЛ
-    scheduler = AsyncIOScheduler(timezone=timezone("Asia/Almaty"))
-    
-    # Настраиваем триггер: каждый день (trigger='cron') в 07 часов 00 минут
-    scheduler.add_job(
-        send_daily_reflection_to_channel, 
-        trigger='cron', 
-        hour=7, 
-        minute=0, 
-        args=[bot]
-    )
-    
-    # Стартуем планировщик
-    scheduler.start()
-    logging.info("Планировщик рассылки запущен (время: Алматы, 07:00).")
+    # КРИТИЧЕСКИ ВАЖНО: Запускаем наш таймер как фоновую задачу asyncio
+    asyncio.create_task(daily_scheduler(bot))
+    logging.info("Таймер рассылки Наурыз инициализирован на 07:00.")
 
     logging.info("Бот успешно запущен и готов к работе!")
     await dp.start_polling(bot)
