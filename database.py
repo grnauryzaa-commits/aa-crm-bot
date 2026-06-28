@@ -7,25 +7,34 @@ from config import DATABASE_URL as DB_URL
 logging.basicConfig(level=logging.INFO)
 
 async def init_db():
-    logging.info("🚀 Запуск инициализации и проверки структуры базы данных...")
+    logging.info("🚀 Запуск принудительного обновления структуры базы данных...")
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        # 1. СОЗДАНИЕ ТАБЛИЦ ДЛЯ СПОНСОРОВ (если их вообще не было)
+        # 1. СОЗДАНИЕ ТАБЛИЦЫ SPONSORS (если её нет) И ПРОВЕРКА КОЛОНОК
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsors (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT UNIQUE,
+                user_id BIGINT UNIQUE PRIMARY KEY,
                 name VARCHAR(100),
                 age INT,
                 sobriety VARCHAR(100),
                 city VARCHAR(100),
                 username VARCHAR(100),
-                phone VARCHAR(100)
+                phone VARCHAR(100),
+                program_info TEXT
             );
         """)
         
+        # 2. ИСПРАВЛЕНИЕ ОШИБКИ: Гарантируем правильную структуру таблицы черновиков
+        # Если таблица sponsor_drafts повреждена или в ней нет user_id, мы пересоздадим её правильно
+        try:
+            cur.execute("SELECT user_id FROM sponsor_drafts LIMIT 1;")
+        except Exception:
+            conn.rollback()
+            logging.warning("⚠️ Таблица sponsor_drafts повреждена или не содержит user_id. Пересоздаем...")
+            cur.execute("DROP TABLE IF EXISTS sponsor_drafts;")
+            
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsor_drafts (
                 user_id BIGINT PRIMARY KEY,
@@ -34,17 +43,16 @@ async def init_db():
                 sobriety VARCHAR(100),
                 city VARCHAR(100),
                 username VARCHAR(100),
-                phone VARCHAR(100)
+                phone VARCHAR(100),
+                program_info TEXT
             );
         """)
 
-        # 2. ИСПРАВЛЕНИЕ СТРУКТУРЫ: Принудительно добавляем колонку program_info в обе таблицы
-        logging.info("⚡ Проверка и добавление колонки 'program_info'...")
+        # 3. ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: Проверяем наличие колонки program_info в таблице sponsors
         cur.execute("ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS program_info TEXT;")
         cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS program_info TEXT;")
         
-        # 3. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ЕЖЕДНЕВНЫХ РАЗМЫШЛЕНИЙ
-        logging.info("⚡ Проверка и создание таблицы 'reflections_archive'...")
+        # 4. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ЕЖЕДНЕВНЫХ РАЗМЫШЛЕНИЙ
         cur.execute("""
             CREATE TABLE IF NOT EXISTS reflections_archive (
                 day INT,
@@ -58,34 +66,38 @@ async def init_db():
         conn.commit()
         cur.close()
         conn.close()
-        logging.info("🎉 БАЗА ДАННЫХ УСПЕШНО ОБНОВЛЕНА И ГОТОВА К РАБОТЕ!")
+        logging.info("🎉 СТРУКТУРА БАЗЫ ДАННЫХ ИСПРАВЛЕНА И ГОТОВА К РАБОТЕ!")
         
     except Exception as e:
-        logging.error(f"❌ Ошибка при инициализации БД внутри сервера: {e}")
+        logging.error(f"❌ Критическая ошибка инициализации БД: {e}")
         raise e
 
 # =====================================================================
-# АСИНХРОННЫЕ ФУНКЦИИ ДЛЯ ФОРМЫ РЕГИСТРАЦИИ (form.py)
+# АСИНХРОННЫЕ ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ С БАЗОЙ ДАННЫХ
 # =====================================================================
 
 def _get_sponsor_sync(user_id):
-    conn = psycopg2.connect(DB_URL)
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM sponsors WHERE user_id = %s;", (user_id,))
-    res = cur.fetchone()
-    cur.close()
-    conn.close()
-    return res
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("SELECT user_id FROM sponsors WHERE user_id = %s;", (user_id,))
+        res = cur.fetchone()
+        cur.close()
+        conn.close()
+        return res
+    except Exception as e:
+        logging.error(f"Ошибка выполнения _get_sponsor_sync: {e}")
+        return None
 
 async def get_sponsor_by_tg_id(user_id):
-    """Проверяет, есть ли пользователь уже в базе активных спонсоров"""
+    """Проверяет, есть ли пользователь в базе активных спонсоров"""
     return await asyncio.to_thread(_get_sponsor_sync, user_id)
 
 
 def _save_draft_sync(user_id, data):
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
-    # Записываем анкету в черновики (sponsor_drafts)
+    # Записываем анкету в проверенную таблицу sponsor_drafts
     cur.execute("""
         INSERT INTO sponsor_drafts (user_id, name, age, sobriety, city, program_info, username, phone)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
@@ -100,7 +112,7 @@ def _save_draft_sync(user_id, data):
     """, (
         user_id, 
         data.get('name'), 
-        int(data.get('age', 0)) if str(data.get('age')).isdigit() else 0,
+        int(data.get('age', 0)),
         data.get('sobriety'), 
         data.get('city'), 
         data.get('program_info'),
