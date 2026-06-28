@@ -15,6 +15,11 @@ async def cancel_handler(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ Заполнение отменено.", reply_markup=types.ReplyKeyboardRemove())
 
+@router.message(F.text == "📝 Заполнить анкету")
+async def start_form(message: types.Message, state: FSMContext):
+    await message.answer("Начинаем. Какой твой пол?", reply_markup=get_cancel_kb())
+    await state.set_state(SponsorForm.gender)
+
 @router.message(SponsorForm.gender)
 async def process_gender(message: types.Message, state: FSMContext):
     await state.update_data(gender=message.text)
@@ -29,6 +34,5 @@ async def process_gender(message: types.Message, state: FSMContext):
 @router.message(SponsorForm.phone)
 async def process_phone(message: types.Message, state: FSMContext):
     await state.update_data(phone=message.text)
-    # Тут можно сохранить данные в БД
     await message.answer("✅ **Спасибо!** Все данные сохранены.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()

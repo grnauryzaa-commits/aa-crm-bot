@@ -17,5 +17,8 @@ async def cmd_start(message: types.Message):
         "Пожалуйста, выбери интересующий раздел в меню ниже 👇"
     )
     
-    kb = await get_main_menu_keyboard()
+    # Вызываем функцию меню
+    kb = get_main_menu_keyboard()
+    
+    # Отправляем сообщение с текстом и кнопками
     await message.answer(welcome_text, parse_mode="Markdown", reply_markup=kb)
