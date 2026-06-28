@@ -1,13 +1,6 @@
-from aiogram.fsm.state import StatesGroup, State
-
+from aiogram.fsm.state import State, StatesGroup
 
 class SponsorForm(StatesGroup):
-    name = State()
-    age = State()
-    identity = State()
-    sobriety = State()
-    city = State()
-    formats = State()
-    telegram = State()
+    gender = State()
     phone = State()
-    about = State()
+    # добавь другие состояния, если они есть
