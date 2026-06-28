@@ -1,20 +1,20 @@
-from aiogram import Router, types
-from aiogram.filters import Command
+from aiogram import Router, F, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 router = Router()
 
-# Обновленная клавиатура с кнопкой Размышлений
-main_menu = ReplyKeyboardMarkup(
-    keyboard=[
+async def get_main_menu_keyboard():
+    # ИСПРАВЛЕНО: Кнопки прописаны строго так, как они отображаются на телефоне
+    keyboard = [
         [KeyboardButton(text="📘 Ежедневные размышления")],
         [KeyboardButton(text="➕ Стать спонсором")],
-        [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="📅 Расписание")],
+        [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="📅 Расписание группы")],
         [KeyboardButton(text="❓ Помощь")]
-    ],
-    resize_keyboard=True
-)
+    ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-@router.message(Command("menu"))
-async def cmd_menu(message: types.Message):
-    await message.answer("Вот твое главное меню. Выбери нужный раздел:", reply_markup=main_menu)
+# Хэндлер вызова меню, если человек пишет что-то абстрактное
+@router.message(F.text == "💻 Главное меню")
+async def show_menu(message: types.Message):
+    kb = await get_main_menu_keyboard()
+    await message.answer("Вы вернулись в главное меню. Выберите интересующий раздел:", reply_markup=kb)

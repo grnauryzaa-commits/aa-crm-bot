@@ -3,8 +3,6 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import database as db
-
-# ИСПРАВЛЕНИЕ: Импортируем нашу функцию отправки админам на модерацию
 from routers.sponsors_mod import send_to_moderation
 
 router = Router()
@@ -17,15 +15,16 @@ class SponsorForm(StatesGroup):
     program_info = State()
     phone = State()
 
-@router.message(F.text.in_({"🤝 Стать спонсором", "✍️ Редактировать карточку"}))
+# ИСПРАВЛЕНО: Текст кнопки теперь в точности совпадает с клавиатурой на скриншоте
+@router.message(F.text.in_({"➕ Стать спонсором", "✍️ Редактировать карточку"}))
 async def start_form(message: types.Message, state: FSMContext):
     existing = await db.get_sponsor_by_tg_id(message.from_user.id)
     
-    if existing and message.text == "🤝 Стать спонсором":
+    if existing:
         kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="✍️ Редактировать карточку")]], resize_keyboard=True)
         await message.answer(
             "ℹ️ Ты уже зарегистрирован в базе спонсоров.\n\n"
-            "Если твои данные (срок трезвости, новый опыт по Традициям/Шагам) изменились, нажми кнопку ниже, чтобы обновить карточку:", 
+            "Если твои данные изменились, нажми кнопку ниже, чтобы обновить карточку:", 
             reply_markup=kb
         )
         return
@@ -82,7 +81,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         if username == "Скрыт":
             await message.answer(
                 "⚠️ У тебя скрыт ник (username) в настройках Telegram и не указан телефон. "
-                "Подопечные не смогут с тобой связаться. Пожалуйста, напиши свой телефон текстом:"
+                "Пожалуйста, напиши свой телефон текстом:"
             )
             return
 
@@ -90,10 +89,8 @@ async def process_phone(message: types.Message, state: FSMContext):
     data = await state.get_data()
     await state.clear()
 
-    # 1. Сохраняем ТОЛЬКО черновик в базу данных
     await db.save_sponsor_draft(message.from_user.id, data)
 
-    # 2. Показываем спонсору превью его новой карточки
     card_text = (
         "❤️ **Твоя карточка успешно отправлена админам на одобрение!**\n\n"
         "✨ **КАРТОЧКА СПОНСОРА АА**\n"
@@ -109,10 +106,8 @@ async def process_phone(message: types.Message, state: FSMContext):
         "Пожалуйста, ожидай. Как только модератор проверит анкету, бот пришлет тебе уведомление! 🕊"
     )
     
-    # Импортируем клавиатуру главного меню, чтобы вернуть нижние кнопки
     from routers.menu import get_main_menu_keyboard
     main_kb = await get_main_menu_keyboard() 
     await message.answer(card_text, parse_mode="Markdown", reply_markup=main_kb)
     
-    # 3. ИСПРАВЛЕНИЕ: Отправляем заявку с кнопками "Одобрить/Отклонить" в твой новый модуль модерации
     await send_to_moderation(message.bot, message.from_user.id, data)
