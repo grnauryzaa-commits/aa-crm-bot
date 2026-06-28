@@ -13,5 +13,4 @@ async def show_schedule(message: types.Message):
         "• Воскресенье: 15:00 - 16:30\n\n"
         "Ждем вас! Приходите вовремя, группа открыта для всех."
     )
-    # Убран parse_mode, чтобы бот никогда не зависал из-за кавычек или знаков
     await message.answer(schedule_text)
