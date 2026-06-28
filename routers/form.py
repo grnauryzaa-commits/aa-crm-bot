@@ -3,6 +3,7 @@ from aiogram import Router, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.filters import Command
 import database as db
 
 # Импортируем нашу функцию отправки админам на модерацию
@@ -17,6 +18,20 @@ class SponsorForm(StatesGroup):
     city = State()
     program_info = State()
     phone = State()
+
+# ГЛОБАЛЬНЫЙ СБРОС АНКЕТЫ ПРИ КОМАНДЕ /start ИЛИ /cancel
+@router.message(Command("start", "cancel"), FSMContext)
+async def cancel_handler(message: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    if current_state is not None:
+        await state.clear()
+        from routers.menu import get_main_menu_keyboard
+        main_kb = await get_main_menu_keyboard()
+        await message.answer(
+            "❌ Заполнение анкеты прервано. Возвращаемся в главное меню.", 
+            reply_markup=main_kb
+        )
+        return
 
 # 1. СТАРТ АНКЕТЫ
 @router.message(F.text.in_({"➕ Стать спонсором", "✍️ Редактировать карточку"}))
@@ -34,28 +49,28 @@ async def start_form(message: types.Message, state: FSMContext):
     except Exception as e:
         logging.error(f"Ошибка проверки спонсора в БД: {e}")
 
-    await message.answer("🕊 **Заполнение карточки Спонсора АА**\n\n📝 **Как к тебе обращаться?** (Введи имя):", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("🕊 Заполнение карточки Спонсора АА\n\n📝 Как к тебе обращаться? (Введи имя):", reply_markup=types.ReplyKeyboardRemove())
     await state.set_state(SponsorForm.name)
 
 # 2. ИМЯ
 @router.message(SponsorForm.name)
 async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("📅 **Сколько тебе лет?**")
+    await message.answer("📅 Сколько тебе лет?")
     await state.set_state(SponsorForm.age)
 
 # 3. ВОЗРАСТ
 @router.message(SponsorForm.age)
 async def process_age(message: types.Message, state: FSMContext):
     await state.update_data(age=message.text)
-    await message.answer("🕊 **Твой актуальный срок трезвости?**\n(Например: *2 года и 3 месяца*):")
+    await message.answer("🕊 Твой актуальный срок трезвости?\n(Например: 2 года и 3 месяца):")
     await state.set_state(SponsorForm.sobriety)
 
 # 4. СРОК ТРЕЗВОСТИ
 @router.message(SponsorForm.sobriety)
 async def process_sobriety(message: types.Message, state: FSMContext):
     await state.update_data(sobriety=message.text)
-    await message.answer("📍 **Твой город?** (Или напиши *Онлайн*):")
+    await message.answer("📍 Твой город? (Или напиши: Онлайн):")
     await state.set_state(SponsorForm.city)
 
 # 5. ГОРОД
@@ -63,8 +78,8 @@ async def process_sobriety(message: types.Message, state: FSMContext):
 async def process_city(message: types.Message, state: FSMContext):
     await state.update_data(city=message.text)
     await message.answer(
-        "📖 **Твой опыт в Содружестве?**\n"
-        "(Например: *Спонсирую по Большой Книге, а также делюсь опытом по 12 Традициям АА*):"
+        "📖 Твой опыт в Содружестве?\n"
+        "(Например: Спонсирую по Большой Книге, а также делюсь опытом по 12 Традициям АА):"
     )
     await state.set_state(SponsorForm.program_info)
 
@@ -75,7 +90,7 @@ async def process_program(message: types.Message, state: FSMContext):
     
     skip_kb = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="❌ Не указывать номер (только ТГ)")]], resize_keyboard=True)
     await message.answer(
-        "📞 **Укажи свой номер телефона для связи:**\n"
+        "📞 Укажи свой номер телефона для связи:\n"
         "(Или нажми кнопку ниже, чтобы оставить только свой аккаунт Телеграм)", 
         reply_markup=skip_kb
     )
@@ -105,25 +120,26 @@ async def process_phone(message: types.Message, state: FSMContext):
         # 1. Сохраняем анкету в таблицу черновиков (sponsor_drafts)
         await db.save_sponsor_draft(message.from_user.id, data)
 
-        # 2. Формируем превью отправленной карточки для пользователя
+        # 2. ИСПРАВЛЕНИЕ: Формируем текст БЕЗ Markdown-разметки (parse_mode удален), чтобы избежать ошибок парсинга
         card_text = (
-            "❤️ **Твоя карточка успешно отправлена админам на одобрение!**\n\n"
-            "✨ **КАРТОЧКА СПОНСОРА АА**\n"
+            "❤️ Твоя карточка успешно отправлена админам на одобрение!\n\n"
+            "✨ КАРТОЧКА СПОНСОРА АА\n"
             "━━━━━━━━━━━━━━━━━━\n"
-            f"👤 **Имя:** {data.get('name')}\n"
-            f"📅 **Возраст (лет):** {data.get('age')}\n"
-            f"🕊 **Трезвость:** {data.get('sobriety')}\n"
-            f"📍 **Город:** {data.get('city')}\n\n"
-            f"📖 **Опыт/Программа:** {data.get('program_info')}\n"
-            f"✈️ **Telegram:** {data.get('username')}\n"
-            f"📞 **Телефон:** {data.get('phone')}\n"
+            f"👤 Имя: {data.get('name')}\n"
+            f"📅 Возраст (лет): {data.get('age')}\n"
+            f"🕊 Трезвость: {data.get('sobriety')}\n"
+            f"📍 Город: {data.get('city')}\n\n"
+            f"📖 Опыт/Программа: {data.get('program_info')}\n"
+            f"✈️ Telegram: {data.get('username')}\n"
+            f"📞 Телефон: {data.get('phone')}\n"
             "━━━━━━━━━━━━━━━━━━\n\n"
             "Пожалуйста, ожидай. Как только модератор проверит анкету, бот пришлет тебе уведомление! 🕊"
         )
         
         from routers.menu import get_main_menu_keyboard
         main_kb = await get_main_menu_keyboard() 
-        await message.answer(card_text, parse_mode="Markdown", reply_markup=main_kb)
+        # Убран parse_mode="Markdown", теперь бот никогда не упадет из-за спецсимволов пользователя
+        await message.answer(card_text, reply_markup=main_kb)
         
         # 3. Отправляем карточку тебе на модерацию
         await send_to_moderation(message.bot, message.from_user.id, data)
@@ -133,7 +149,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         from routers.menu import get_main_menu_keyboard
         main_kb = await get_main_menu_keyboard()
         await message.answer(
-            f"❌ Произошла ошибка базы данных.\n"
-            f"Пожалуйста, попробуй позже.\n\n`Тех. лог: {e}`",
+            f"❌ Произошла ошибка при отправке анкеты.\n"
+            f"Пожалуйста, попробуй позже.\n\nТех. лог: {e}",
             reply_markup=main_kb
         )
