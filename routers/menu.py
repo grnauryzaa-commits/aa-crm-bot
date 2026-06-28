@@ -4,16 +4,19 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 router = Router()
 
 async def get_main_menu_keyboard():
-    # ИСПРАВЛЕНО: Кнопки прописаны строго так, как они отображаются на телефоне
+    # Кнопки прописаны строго так, как они отображаются на твоем телефоне
     keyboard = [
         [KeyboardButton(text="📘 Ежедневные размышления")],
         [KeyboardButton(text="➕ Стать спонсором")],
-        [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="📅 Расписание группы")],
+        [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="📅 Расписание")],
         [KeyboardButton(text="❓ Помощь")]
     ]
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
-# Хэндлер вызова меню, если человек пишет что-то абстрактное
+# 🟢 РЕШЕНИЕ ОШИБКИ: Создаем дублирующее имя (алиас), чтобы старый импорт перестал ругаться
+main_menu = get_main_menu_keyboard
+
+# Хэндлер вызова меню, если человек пишет что-то абстрактное или "Главное меню"
 @router.message(F.text == "💻 Главное меню")
 async def show_menu(message: types.Message):
     kb = await get_main_menu_keyboard()
