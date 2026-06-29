@@ -1,9 +1,21 @@
+import os
+import psycopg2
+from aiogram import Router, types
+from aiogram.filters import Command
+from datetime import datetime
+
+router = Router()
+
+# 1. Объявляем переменную здесь, в самом верху
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railway.internal:5432/railway")
+
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
 async def send_reflection(message: types.Message):
     today = datetime.now()
     
     try:
+        # 2. Теперь переменная DB_URL видна внутри функции
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         cur.execute("""
@@ -19,12 +31,9 @@ async def send_reflection(message: types.Message):
             title, text = row
             parts = text.split('\n\n')
             
-            # Цитата — первый блок, остальное — текст. Источник (parts[1]) пропускаем.
             quote = parts[0] if len(parts) > 0 else ""
             body = "\n\n".join(parts[2:]) if len(parts) > 2 else ""
 
-            # Формируем сообщение
-            # Используем месяц в текстовом виде (для красоты)
             months = [
                 "января", "февраля", "марта", "апреля", "мая", "июня", 
                 "июля", "августа", "сентября", "октября", "ноября", "декабря"
@@ -44,4 +53,5 @@ async def send_reflection(message: types.Message):
             await message.answer("⚠️ Размышление на сегодня пока не найдено.")
             
     except Exception as e:
+        print(f"Ошибка БД: {e}")
         await message.answer("❌ Произошла ошибка при доступе к базе данных.")
