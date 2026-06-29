@@ -9,22 +9,24 @@ router = Router()
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 CHANNEL_ID = "@aa_nauryz"
 
-def format_reflection_text(title, text, today):
-    # Очистка мусора
-    bad_phrases = ["Поделиться:", "Рассказать:", "Aудио-ежедневник", "Тег audio", 
-                   "Twitter", "Facebook", "Vkontakte", "WhatsApp", "Telegram", "EMail"]
+def format_reflection_text(text, today):
+    # Разбираем текст по строкам
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
     
-    clean_text = text
-    for phrase in bad_phrases:
-        clean_text = clean_text.split(phrase)[0]
+    # 1. Фильтруем мусорные строки
+    forbidden = ["WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
+                 "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp", 
+                 "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", "Сегодня"]
     
-    # Если заголовок попал в текст, вырезаем его, чтобы не дублировать
-    if title in clean_text:
-        clean_text = clean_text.split(title, 1)[1]
-    
-    # Принудительная вставка пустых строк для красоты (если их мало)
-    # Заменяем цепочки пробелов на одинарный пробел, сохраняя переносы
-    clean_text = "\n".join([line.strip() for line in clean_text.split('\n') if line.strip()])
+    filtered_lines = []
+    for line in lines:
+        if not any(f in line for f in forbidden):
+            filtered_lines.append(line)
+            
+    # 2. Первая оставшаяся строка — это заголовок
+    real_title = filtered_lines[0] if filtered_lines else "БЕЗ ЗАГОЛОВКА"
+    # Остальное — тело размышления
+    body = "\n\n".join(filtered_lines[1:])
     
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
@@ -32,8 +34,8 @@ def format_reflection_text(title, text, today):
     return (
         f"📖 <b>Ежедневные размышления АА</b>\n\n"
         f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
-        f"<b>{title.upper()}</b>\n\n"
-        f"{html.escape(clean_text)}"
+        f"<b>{real_title.upper()}</b>\n\n"
+        f"{html.escape(body)}"
     )
 
 async def send_daily_reflection_to_channel(bot: Bot):
@@ -41,14 +43,15 @@ async def send_daily_reflection_to_channel(bot: Bot):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur.execute("SELECT title, text FROM reflections_archive WHERE day = %s AND month = %s", 
+        # Выбираем только текст, title игнорируем
+        cur.execute("SELECT text FROM reflections_archive WHERE day = %s AND month = %s", 
                     (today.day, today.month))
         row = cur.fetchone()
         cur.close()
         conn.close()
 
         if row:
-            text_content = format_reflection_text(row[0], row[1], today)
+            text_content = format_reflection_text(row[0], today)
             await bot.send_message(CHANNEL_ID, text_content, parse_mode="HTML")
     except Exception as e:
         logging.error(f"Ошибка рассылки: {e}")
@@ -59,14 +62,14 @@ async def show_reflections(message: types.Message):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur.execute("SELECT title, text FROM reflections_archive WHERE day = %s AND month = %s", 
+        cur.execute("SELECT text FROM reflections_archive WHERE day = %s AND month = %s", 
                     (today.day, today.month))
         row = cur.fetchone()
         cur.close()
         conn.close()
 
         if row:
-            text = format_reflection_text(row[0], row[1], today)
+            text = format_reflection_text(row[0], today)
             await message.answer(text, parse_mode="HTML")
         else:
             await message.answer("⚠️ Размышление на сегодня не найдено.")
