@@ -6,21 +6,24 @@ from datetime import datetime
 
 router = Router()
 
-# Берем из переменной окружения
+# Получаем URL из переменных окружения
 DB_URL = os.getenv("DATABASE_URL")
 
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
 async def send_reflection(message: types.Message):
     if not DB_URL:
-        await message.answer("❌ Ошибка настройки: переменная DATABASE_URL не найдена.")
+        await message.answer("❌ Ошибка: переменная DATABASE_URL не найдена.")
         return
 
     today = datetime.now()
+    
     try:
-        # Добавляем sslmode=require — это обязательное требование для Postgres на Railway
-        conn = psycopg2.connect(DB_URL, sslmode='require')
+        # Убираем sslmode, если он вызывает ошибку, и пробуем простое подключение
+        conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
+        
+        # Запрос к таблице
         cur.execute("""
             SELECT title, text FROM reflections_archive 
             WHERE day = %s AND month = %s
@@ -32,6 +35,7 @@ async def send_reflection(message: types.Message):
 
         if row:
             title, text = row
+            # Разделяем по нашему разделителю
             parts = text.split('|||')
             quote = parts[0].strip() if len(parts) > 0 else ""
             body = parts[1].strip() if len(parts) > 1 else ""
@@ -50,8 +54,10 @@ async def send_reflection(message: types.Message):
             )
             await message.answer(response, parse_mode="Markdown")
         else:
-            await message.answer("⚠️ Размышление на сегодня пока не найдено.")
+            await message.answer(f"⚠️ Размышление на {today.day} {months[today.month-1]} не найдено в базе.")
             
     except Exception as e:
-        print(f"Ошибка: {e}")
-        await message.answer("❌ Ошибка при обращении к базе данных.")
+        # Выводим конкретную ошибку, чтобы понять причину
+        error_text = f"❌ Ошибка базы: {str(e)}"
+        print(error_text)
+        await message.answer(error_text)
