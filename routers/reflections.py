@@ -6,7 +6,7 @@ from datetime import datetime
 
 router = Router()
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railway.internal:5432/railway")
+DB_URL = os.getenv("DATABASE_URL", "${{ Postgres.DATABASE_URL }}")
 
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
