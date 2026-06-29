@@ -1,26 +1,11 @@
-from aiogram import Router, types
-from aiogram.filters import Command
-from datetime import datetime
-import psycopg2
-import os
-
-# Используем внутренний адрес Railway для бесплатного трафика
-# Если бот запущен в облаке, переменная DATABASE_URL должна быть настроена в Railway Variables
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railway.internal:5432/railway")
-
-router = Router()
-
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
 async def send_reflection(message: types.Message):
-    # Получаем текущую дату
     today = datetime.now()
     
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        
-        # Запрос к базе данных
         cur.execute("""
             SELECT title, text FROM reflections_archive 
             WHERE day = %s AND month = %s
@@ -32,11 +17,31 @@ async def send_reflection(message: types.Message):
 
         if row:
             title, text = row
-            # Отправляем чистое размышление
-            await message.answer(f"📖 **{title}**\n\n{text}")
+            parts = text.split('\n\n')
+            
+            # Цитата — первый блок, остальное — текст. Источник (parts[1]) пропускаем.
+            quote = parts[0] if len(parts) > 0 else ""
+            body = "\n\n".join(parts[2:]) if len(parts) > 2 else ""
+
+            # Формируем сообщение
+            # Используем месяц в текстовом виде (для красоты)
+            months = [
+                "января", "февраля", "марта", "апреля", "мая", "июня", 
+                "июля", "августа", "сентября", "октября", "ноября", "декабря"
+            ]
+            date_str = f"{today.day} {months[today.month - 1]}"
+
+            response = (
+                f"📖 **Ежедневные размышления АА**\n\n"
+                f"📋 **{date_str}**\n\n"
+                f"**{title}**\n\n"
+                f"**{quote}**\n\n"
+                f"{body}"
+            )
+            
+            await message.answer(response, parse_mode="Markdown")
         else:
-            await message.answer("Размышление на сегодня пока не найдено.")
+            await message.answer("⚠️ Размышление на сегодня пока не найдено.")
             
     except Exception as e:
-        print(f"Ошибка БД: {e}")
-        await message.answer("Ошибка доступа к базе данных.")
+        await message.answer("❌ Произошла ошибка при доступе к базе данных.")
