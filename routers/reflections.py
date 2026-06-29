@@ -10,21 +10,19 @@ DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railwa
 CHANNEL_ID = "@aa_nauryz"
 
 def format_reflection_text(title, text, today):
-    # Разделяем текст по разделителю ***
     parts = text.split('***')
-    
-    # parts[0] — это источник цитаты
     quote_source = parts[0].strip() if len(parts) > 0 else ""
-    # parts[1] — это основной текст размышления
     raw_body = parts[1].strip() if len(parts) > 1 else ""
 
-    # Очистка текста от "подвала"
+    lines = [line.strip() for line in raw_body.split('\n') if line.strip()]
+    reflection_title = lines[0] if lines else ""
+    reflection_text_body = "\n\n".join(lines[1:])
+
     clean_lines = []
-    for line in raw_body.split('\n'):
+    for line in reflection_text_body.split('\n'):
         line = line.strip()
         if not line: continue
-        # Останавливаемся, как только встречаем любую из этих фраз
-        if any(phrase in line for phrase in ["Место под", "1990©", "Анонимные Алкоголики", "Группа", "Сайт информирует"]):
+        if any(phrase in line for phrase in ["Место под", "1990©", "Анонимные Алкоголики", "Группа", "Сайт информирует", "Наша помощь"]):
             break
         clean_lines.append(line)
     
@@ -33,11 +31,10 @@ def format_reflection_text(title, text, today):
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     
-    # Формируем сообщение строго по твоему образцу
     return (
         f"📖 <b>Ежедневные размышления АА</b>\n\n"
         f"<b>{today.day} {months[today.month - 1]}</b>\n\n"
-        f"<b>{title.upper()}</b>\n\n"
+        f"<b>{reflection_title.upper()}</b>\n\n"
         f"<i>{html.escape(quote_source)}</i>\n\n"
         f"{html.escape(clean_body)}"
     )
@@ -78,5 +75,5 @@ async def show_reflections(message: types.Message):
         else:
             await message.answer("⚠️ Размышление на сегодня не найдено.")
     except Exception as e:
-        logging.error(f"Ошибка при ответе на кнопку: {e}")
+        logging.error(f"Ошибка при ответе: {e}")
         await message.answer("❌ Ошибка при загрузке размышления.")
