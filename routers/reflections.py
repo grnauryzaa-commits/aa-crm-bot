@@ -10,21 +10,22 @@ DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railwa
 CHANNEL_ID = "@aa_nauryz"
 
 def format_reflection_text(title, text, today):
-    # Разделяем по разделителю
+    # Разделяем на [Цитата] и [Текст]
     parts = text.split('***')
-    
-    # Берем всё содержимое после *** как текст размышления
-    body_content = parts[1].strip() if len(parts) > 1 else text
     quote_source = parts[0].strip() if len(parts) > 0 else ""
-
+    raw_body = parts[1].strip() if len(parts) > 1 else text
+    
+    # Жесткая обрезка по конкретной фразе, после которой идет мусор
+    clean_body = raw_body.split("...Место под")[0].strip()
+    
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     
-    # Выводим заголовок, затем основной текст, затем цитату
     return (
         f"📖 <b>Ежедневные размышления АА</b>\n\n"
         f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
-        f"{html.escape(body_content)}\n\n"
+        f"<b>{title.upper()}</b>\n\n"
+        f"{html.escape(clean_body)}\n\n"
         f"<i>{html.escape(quote_source)}</i>"
     )
 
