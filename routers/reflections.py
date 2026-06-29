@@ -12,24 +12,26 @@ CHANNEL_ID = "@aa_nauryz"
 def format_reflection_text(text, today):
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     
-    # Мусор, который надо вырезать нафиг
-    forbidden = ["WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
-                 "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp", 
-                 "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", 
-                 "Skype", "Mail", "Альтернативный вариант"]
+    # Список строк, которые надо вырезать нафиг
+    forbidden = [
+        "WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
+        "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp", 
+        "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", 
+        "Skype", "Mail", "Альтернативный вариант",
+        "Ежедневные Размышления на", "Сегодня"
+    ]
     
-    # Очищаем строки от мусора
     filtered = []
     for line in lines:
-        if not any(f in line for f in forbidden):
-            # Пропускаем строки с датами, которые дублируются, 
-            # чтобы не было каши (кроме заголовка дня)
-            if line.strip().lower() == f"{today.day} июня": continue 
-            filtered.append(line)
+        # Проверка на наличие мусора
+        if any(f in line for f in forbidden):
+            continue
+        # Проверка на дублирование даты в теле текста
+        if f"{today.day}" in line and "июня" in line.lower() and len(line) < 20:
+            continue
             
-    # Собираем тело текста: берем всё, что после заголовка (ЭФФЕКТ ВОЛНЫ и т.д.)
-    # Но так как у тебя в примере заголовок статьи идет после даты, 
-    # мы просто выводим всё отфильтрованное чисто.
+        filtered.append(line)
+    
     body = "\n\n".join(filtered)
     
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
