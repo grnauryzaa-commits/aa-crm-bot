@@ -10,23 +10,27 @@ DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rl
 CHANNEL_ID = "@aa_nauryz"
 
 def format_reflection_text(text, today):
-    # Разбираем текст по строкам
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     
-    # 1. Фильтруем мусорные строки
+    # Мусор, который надо вырезать нафиг
     forbidden = ["WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
                  "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp", 
-                 "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", "Сегодня"]
+                 "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", 
+                 "Skype", "Mail", "Альтернативный вариант"]
     
-    filtered_lines = []
+    # Очищаем строки от мусора
+    filtered = []
     for line in lines:
         if not any(f in line for f in forbidden):
-            filtered_lines.append(line)
+            # Пропускаем строки с датами, которые дублируются, 
+            # чтобы не было каши (кроме заголовка дня)
+            if line.strip().lower() == f"{today.day} июня": continue 
+            filtered.append(line)
             
-    # 2. Первая оставшаяся строка — это заголовок
-    real_title = filtered_lines[0] if filtered_lines else "БЕЗ ЗАГОЛОВКА"
-    # Остальное — тело размышления
-    body = "\n\n".join(filtered_lines[1:])
+    # Собираем тело текста: берем всё, что после заголовка (ЭФФЕКТ ВОЛНЫ и т.д.)
+    # Но так как у тебя в примере заголовок статьи идет после даты, 
+    # мы просто выводим всё отфильтрованное чисто.
+    body = "\n\n".join(filtered)
     
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
@@ -34,7 +38,6 @@ def format_reflection_text(text, today):
     return (
         f"📖 <b>Ежедневные размышления АА</b>\n\n"
         f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
-        f"<b>{real_title.upper()}</b>\n\n"
         f"{html.escape(body)}"
     )
 
@@ -43,7 +46,6 @@ async def send_daily_reflection_to_channel(bot: Bot):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        # Выбираем только текст, title игнорируем
         cur.execute("SELECT text FROM reflections_archive WHERE day = %s AND month = %s", 
                     (today.day, today.month))
         row = cur.fetchone()
