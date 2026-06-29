@@ -6,14 +6,12 @@ from datetime import datetime
 import html
 
 router = Router()
-
 DB_URL = os.getenv("DATABASE_URL")
 
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
 async def send_reflection(message: types.Message):
     if not DB_URL:
-        await message.answer("❌ Ошибка: переменная DATABASE_URL не найдена.")
         return
 
     today = datetime.now()
@@ -21,42 +19,54 @@ async def send_reflection(message: types.Message):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur.execute("""
-            SELECT title, text FROM reflections_archive 
-            WHERE day = %s AND month = %s
-        """, (today.day, today.month))
-        
+        cur.execute("SELECT title, text FROM reflections_archive WHERE day = %s AND month = %s", 
+                    (today.day, today.month))
         row = cur.fetchone()
         cur.close()
         conn.close()
 
         if row:
             title, text = row
-            parts = text.split('***') # Разделитель из твоего fill_db.py
+            # Разделяем на части (предполагаем, что разделитель ***)
+            parts = text.split('***') 
+            
+            # Цитата и основной текст
             quote = parts[0].strip() if len(parts) > 0 else ""
-            body = parts[1].strip() if len(parts) > 1 else ""
+            full_body = parts[1].strip() if len(parts) > 1 else ""
 
-            months = [
-                "января", "февраля", "марта", "апреля", "мая", "июня", 
-                "июля", "августа", "сентября", "октября", "ноября", "декабря"
+            # --- ФИЛЬТРЫ ОЧИСТКИ МУСОРА ---
+            trash_filters = [
+                "1990©", "Alcoholics Anonymous", "Анонимные Алкоголики", 
+                "Группа", "Наша помощь", "Сайт информирует", 
+                "Даже когда мы", "Место под", "всемирного содружества"
             ]
             
-            # Используем HTML-теги, они не требуют экранирования точек
-            response = (
-                f"📖 <b>Ежедневные размышления АА</b>\n\n"
-                f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
-                f"<b>{html.escape(title)}</b>\n\n"
-                f"<i>« {html.escape(quote)} »</i>\n\n"
-                f"{html.escape(body)}"
-            )
+            clean_body_lines = []
+            for line in full_body.split('\n'):
+                line = line.strip()
+                if not line: continue
+                # Если строка содержит мусор, пропускаем её
+                if any(filter_word in line for filter_word in trash_filters):
+                    continue
+                clean_body_lines.append(line)
+            
+            clean_body = "\n\n".join(clean_body_lines)
+            # -------------------------------
 
-            # Обрезаем, если текст слишком большой
-            if len(response) > 4000:
-                response = response[:3997] + "..."
+            months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
+                      "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+            
+            # Формируем красивое сообщение
+            response = (
+                f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
+                f"<b>{title.upper()}</b>\n\n"
+                f"{html.escape(quote)}\n\n"
+                f"{html.escape(clean_body)}"
+            )
 
             await message.answer(response, parse_mode="HTML")
         else:
-            await message.answer(f"⚠️ Размышление на {today.day} {months[today.month-1]} не найдено.")
+            await message.answer("⚠️ Размышление на сегодня не найдено.")
             
     except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)[:100]}")
+        print(f"Ошибка: {e}")
