@@ -3,14 +3,19 @@ import aiohttp
 import psycopg2
 from bs4 import BeautifulSoup
 
+# Присваиваем адрес переменной, чтобы код работал
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 
 async def fill():
     print("🧹 Начинаю обновление базы...")
-    conn = psycopg2.connect(DB_URL)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM reflections_archive;")
-    conn.commit()
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM reflections_archive;")
+        conn.commit()
+    except Exception as e:
+        print(f"Ошибка подключения к базе: {e}")
+        return
 
     async with aiohttp.ClientSession(headers={'User-Agent': 'Mozilla/5.0'}) as session:
         for month in range(1, 13):
@@ -31,19 +36,26 @@ async def fill():
                     # Фильтруем только текстовые абзацы
                     data = [p.text.strip() for p in paragraphs if p.text.strip()]
                     
-                    # Логика разбора:
+                    if not data: continue
+
+                    # Логика:
                     # [0] - Заголовок
-                    # [1] - Цитата (если есть)
-                    # [2] - Источник (мы его просто игнорируем/пропускаем)
-                    # [3:] - Основное размышление
+                    # [1] - Цитата
+                    # [2] - Часто содержит источник (с. 123), его пропускаем
+                    # [3:] - Основной текст
                     
-                    title = data[0] if len(data) > 0 else f"{day:02d}.{month:02d}"
+                    title = data[0]
                     quote = data[1] if len(data) > 1 else ""
-                    # Берем всё после 2-го индекса (пропуская источник)
-                    body_lines = data[3:] if len(data) > 3 else data[2:]
+                    
+                    # Если есть строка с "с." или "p." на 2-й позиции, считаем её источником и берем данные с 3-го индекса
+                    if len(data) > 2 and ("с." in data[2].lower() or "p." in data[2].lower()):
+                        body_lines = data[3:]
+                    else:
+                        body_lines = data[2:]
+                    
                     body = "\n\n".join(body_lines)
                     
-                    # Собираем в строку через разделитель, чтобы бот мог разделить
+                    # Разделитель для бота
                     clean_content = f"{quote}***{body}"
 
                     cur.execute("""
@@ -60,7 +72,7 @@ async def fill():
     conn.commit()
     cur.close()
     conn.close()
-    print("🎉 Готово!")
+    print("🎉 База обновлена успешно!")
 
 if __name__ == "__main__":
     asyncio.run(fill())
