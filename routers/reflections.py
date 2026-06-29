@@ -6,8 +6,7 @@ from datetime import datetime
 
 router = Router()
 
-# 1. Объявляем переменную здесь, в самом верху
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railway.internal:5432/railway")
+DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway")
 
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
@@ -15,7 +14,6 @@ async def send_reflection(message: types.Message):
     today = datetime.now()
     
     try:
-        # 2. Теперь переменная DB_URL видна внутри функции
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         cur.execute("""
@@ -29,10 +27,11 @@ async def send_reflection(message: types.Message):
 
         if row:
             title, text = row
-            parts = text.split('\n\n')
+            # Разделяем по новому разделителю, который мы задали в fill_db.py
+            parts = text.split('|||')
             
-            quote = parts[0] if len(parts) > 0 else ""
-            body = "\n\n".join(parts[2:]) if len(parts) > 2 else ""
+            quote = parts[0].strip() if len(parts) > 0 else ""
+            body = parts[1].strip() if len(parts) > 1 else ""
 
             months = [
                 "января", "февраля", "марта", "апреля", "мая", "июня", 
@@ -40,11 +39,12 @@ async def send_reflection(message: types.Message):
             ]
             date_str = f"{today.day} {months[today.month - 1]}"
 
+            # Формируем ответ
             response = (
                 f"📖 **Ежедневные размышления АА**\n\n"
                 f"📋 **{date_str}**\n\n"
                 f"**{title}**\n\n"
-                f"**{quote}**\n\n"
+                f"« *{quote}* »\n\n"
                 f"{body}"
             )
             

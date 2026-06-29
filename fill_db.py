@@ -3,11 +3,10 @@ import aiohttp
 import psycopg2
 from bs4 import BeautifulSoup
 
-# Адрес базы данных
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 
 async def fill():
-    print("🧹 Начинаю очистку и обновление базы...")
+    print("🧹 Начинаю обновление базы...")
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
     cur.execute("DELETE FROM reflections_archive;")
@@ -20,7 +19,6 @@ async def fill():
             
             for day in range(1, days + 1):
                 url = f"https://mos-nach.ru/thinks/daily_{str(day).zfill(2)}-{str(month).zfill(2)}.html"
-                
                 try:
                     async with session.get(url, timeout=10) as resp:
                         if resp.status != 200: continue
@@ -30,44 +28,39 @@ async def fill():
                     content_div = soup.find(id='content') or soup
                     paragraphs = content_div.find_all('p')
                     
-                    final_text = []
-                    for p in paragraphs:
-                        text = p.text.strip()
-                        
-                        # Стоп-слова: как только скрипт встречает одно из них, 
-                        # сбор текста прекращается.
-                        if any(phrase in text for phrase in [
-                            "Место под альтернативный", 
-                            "Это издание было подготовлено", 
-                            "1990©", 
-                            "Alcoholics Anonymous ©",
-                            "Московские Начинающие",
-                            "Наша помощь бесплатна",
-                            "Сайт информирует"
-                        ]):
-                            break
-                        
-                        if text:
-                            final_text.append(text)
+                    # Фильтруем только текстовые абзацы
+                    data = [p.text.strip() for p in paragraphs if p.text.strip()]
                     
-                    # Собираем всё, что успели накопить до стоп-слов
-                    clean_content = "\n\n".join(final_text)
-                    title = soup.find('h1').text.strip() if soup.find('h1') else f"{day:02d}.{month:02d}"
+                    # Логика разбора:
+                    # [0] - Заголовок
+                    # [1] - Цитата (если есть)
+                    # [2] - Источник (мы его просто игнорируем/пропускаем)
+                    # [3:] - Основное размышление
+                    
+                    title = data[0] if len(data) > 0 else f"{day:02d}.{month:02d}"
+                    quote = data[1] if len(data) > 1 else ""
+                    # Берем всё после 2-го индекса (пропуская источник)
+                    body_lines = data[3:] if len(data) > 3 else data[2:]
+                    body = "\n\n".join(body_lines)
+                    
+                    # Собираем в строку через разделитель, чтобы бот мог разделить
+                    clean_content = f"{quote}***{body}"
 
                     cur.execute("""
                         INSERT INTO reflections_archive (day, month, title, text) 
                         VALUES (%s, %s, %s, %s)
-                    """, (day, month, title, clean_content))
+                    """, (day, month, title[:250], clean_content))
                     
                     print(f"✅ Добавлено: {day:02d}.{month:02d}")
                     
                 except Exception as e:
-                    print(f"Ошибка на {day}.{month}: {e}")
+                    print(f"Ошибка {day}.{month}: {e}")
+                    conn.rollback()
 
     conn.commit()
     cur.close()
     conn.close()
-    print("🎉 База полностью обновлена!")
+    print("🎉 Готово!")
 
 if __name__ == "__main__":
     asyncio.run(fill())
