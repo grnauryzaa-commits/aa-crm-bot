@@ -3,11 +3,19 @@ import psycopg2
 from aiogram import Router, types
 from aiogram.filters import Command
 from datetime import datetime
+import html # Добавляем для работы с текстом
 
 router = Router()
 
-# Получаем URL из переменных окружения
 DB_URL = os.getenv("DATABASE_URL")
+
+# Функция для экранирования символов Markdown
+def escape_markdown(text):
+    # Экранируем символы, которые могут сломать Markdown: * _ ` [ ]
+    chars = ['*', '_', '`', '[']
+    for char in chars:
+        text = text.replace(char, f"\\{char}")
+    return text
 
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
@@ -19,11 +27,8 @@ async def send_reflection(message: types.Message):
     today = datetime.now()
     
     try:
-        # Убираем sslmode, если он вызывает ошибку, и пробуем простое подключение
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        
-        # Запрос к таблице
         cur.execute("""
             SELECT title, text FROM reflections_archive 
             WHERE day = %s AND month = %s
@@ -35,8 +40,8 @@ async def send_reflection(message: types.Message):
 
         if row:
             title, text = row
-            # Разделяем по нашему разделителю
-            parts = text.split('|||')
+            # Разделяем по разделителю (убедись, что в fill_db такой же!)
+            parts = text.split('***') # Используем *** как в твоем fill_db.py
             quote = parts[0].strip() if len(parts) > 0 else ""
             body = parts[1].strip() if len(parts) > 1 else ""
 
@@ -45,19 +50,22 @@ async def send_reflection(message: types.Message):
                 "июля", "августа", "сентября", "октября", "ноября", "декабря"
             ]
             
+            # Экранируем переменные перед вставкой в Markdown
             response = (
-                f"📖 **Ежедневные размышления АА**\n\n"
-                f"📋 **{today.day} {months[today.month - 1]}**\n\n"
-                f"**{title}**\n\n"
-                f"« *{quote}* »\n\n"
-                f"{body}"
+                f"📖 *Ежедневные размышления АА*\n\n"
+                f"📋 *{today.day} {months[today.month - 1]}*\n\n"
+                f"*{escape_markdown(title)}*\n\n"
+                f"« _{escape_markdown(quote)}_ »\n\n"
+                f"{escape_markdown(body)}"
             )
-            await message.answer(response, parse_mode="Markdown")
+
+            # Обрезаем текст, если он длиннее 4000 символов (лимит Telegram)
+            if len(response) > 4000:
+                response = response[:3997] + "..."
+
+            await message.answer(response, parse_mode="MarkdownV2")
         else:
-            await message.answer(f"⚠️ Размышление на {today.day} {months[today.month-1]} не найдено в базе.")
+            await message.answer(f"⚠️ Размышление на {today.day} {months[today.month-1]} не найдено.")
             
     except Exception as e:
-        # Выводим конкретную ошибку, чтобы понять причину
-        error_text = f"❌ Ошибка базы: {str(e)}"
-        print(error_text)
-        await message.answer(error_text)
+        await message.answer(f"❌ Ошибка: {str(e)[:100]}")
