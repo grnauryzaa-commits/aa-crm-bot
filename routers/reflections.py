@@ -12,7 +12,7 @@ DB_URL = os.getenv("DATABASE_URL")
 @router.message(Command("daily"))
 async def send_reflection(message: types.Message):
     if not DB_URL:
-        await message.answer("Ошибка базы данных.")
+        await message.answer("Ошибка: база данных не подключена.")
         return
 
     today = datetime.now()
@@ -28,42 +28,38 @@ async def send_reflection(message: types.Message):
 
         if row:
             title, text = row
+            parts = text.split('***') 
             
-            # Разделяем на 2 части по разделителю ***
-            parts = text.split('***')
             quote = parts[0].strip() if len(parts) > 0 else ""
             raw_body = parts[1].strip() if len(parts) > 1 else ""
 
-            # --- ЖЕСТКАЯ ОЧИСТКА ---
-            # Список стоп-слов, при встрече которых бот обрывает вывод текста
+            # --- ФИЛЬТР МУСОРА ---
             stop_phrases = [
                 "Место под", "1990©", "Анонимные Алкоголики", "Группа", 
                 "Наша помощь", "Сайт информирует", "Даже когда мы", 
                 "Содружество АА", "Основное внимание", "За каждой цитатой",
-                "И если хоть одному"
+                "И если хоть одному", "Содержание ее", "В предисловии"
             ]
             
             clean_lines = []
             for line in raw_body.split('\n'):
                 line = line.strip()
                 if not line: continue
-                # Если в строке мусор - стоп
                 if any(phrase in line for phrase in stop_phrases):
                     break
                 clean_lines.append(line)
             
             clean_body = "\n\n".join(clean_lines)
 
-            # --- ФОРМИРОВАНИЕ ОТВЕТА ---
-            months = [
-                "января", "февраля", "марта", "апреля", "мая", "июня", 
-                "июля", "августа", "сентября", "октября", "ноября", "декабря"
-            ]
+            months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
+                      "июля", "августа", "сентября", "октября", "ноября", "декабря"]
             
+            # --- ФОРМИРОВАНИЕ ВЕРХА И ТЕЛА ---
             response = (
+                f"📖 <b>Ежедневные размышления АА</b>\n\n"
                 f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
-                f"<b>{title}</b>\n\n"
-                f"<i>{html.escape(quote)}</i>\n\n"
+                f"<b>{title.upper()}</b>\n\n"
+                f"<i>«{html.escape(quote)}»</i>\n\n"
                 f"{html.escape(clean_body)}"
             )
 
@@ -72,5 +68,5 @@ async def send_reflection(message: types.Message):
             await message.answer("⚠️ Размышление на сегодня не найдено.")
             
     except Exception as e:
-        await message.answer("❌ Ошибка при загрузке размышления.")
-        print(f"DEBUG ERROR: {e}")
+        print(f"Ошибка: {e}")
+        await message.answer("❌ Произошла ошибка при загрузке размышления.")
