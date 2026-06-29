@@ -3,19 +3,11 @@ import psycopg2
 from aiogram import Router, types
 from aiogram.filters import Command
 from datetime import datetime
-import html # Добавляем для работы с текстом
+import html
 
 router = Router()
 
 DB_URL = os.getenv("DATABASE_URL")
-
-# Функция для экранирования символов Markdown
-def escape_markdown(text):
-    # Экранируем символы, которые могут сломать Markdown: * _ ` [ ]
-    chars = ['*', '_', '`', '[']
-    for char in chars:
-        text = text.replace(char, f"\\{char}")
-    return text
 
 @router.message(lambda message: message.text == "📖 Ежедневные размышления")
 @router.message(Command("daily"))
@@ -40,8 +32,7 @@ async def send_reflection(message: types.Message):
 
         if row:
             title, text = row
-            # Разделяем по разделителю (убедись, что в fill_db такой же!)
-            parts = text.split('***') # Используем *** как в твоем fill_db.py
+            parts = text.split('***') # Разделитель из твоего fill_db.py
             quote = parts[0].strip() if len(parts) > 0 else ""
             body = parts[1].strip() if len(parts) > 1 else ""
 
@@ -50,20 +41,20 @@ async def send_reflection(message: types.Message):
                 "июля", "августа", "сентября", "октября", "ноября", "декабря"
             ]
             
-            # Экранируем переменные перед вставкой в Markdown
+            # Используем HTML-теги, они не требуют экранирования точек
             response = (
-                f"📖 *Ежедневные размышления АА*\n\n"
-                f"📋 *{today.day} {months[today.month - 1]}*\n\n"
-                f"*{escape_markdown(title)}*\n\n"
-                f"« _{escape_markdown(quote)}_ »\n\n"
-                f"{escape_markdown(body)}"
+                f"📖 <b>Ежедневные размышления АА</b>\n\n"
+                f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
+                f"<b>{html.escape(title)}</b>\n\n"
+                f"<i>« {html.escape(quote)} »</i>\n\n"
+                f"{html.escape(body)}"
             )
 
-            # Обрезаем текст, если он длиннее 4000 символов (лимит Telegram)
+            # Обрезаем, если текст слишком большой
             if len(response) > 4000:
                 response = response[:3997] + "..."
 
-            await message.answer(response, parse_mode="MarkdownV2")
+            await message.answer(response, parse_mode="HTML")
         else:
             await message.answer(f"⚠️ Размышление на {today.day} {months[today.month-1]} не найдено.")
             
