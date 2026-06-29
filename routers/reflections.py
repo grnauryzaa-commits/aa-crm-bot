@@ -27,40 +27,41 @@ async def send_reflection(message: types.Message):
 
         if row:
             title, text = row
-            # Разделяем на части (предполагаем, что разделитель ***)
             parts = text.split('***') 
             
-            # Цитата и основной текст
+            # Цитата (parts[0])
             quote = parts[0].strip() if len(parts) > 0 else ""
-            full_body = parts[1].strip() if len(parts) > 1 else ""
-
-            # --- ФИЛЬТРЫ ОЧИСТКИ МУСОРА ---
-            trash_filters = [
-                "1990©", "Alcoholics Anonymous", "Анонимные Алкоголики", 
-                "Группа", "Наша помощь", "Сайт информирует", 
-                "Даже когда мы", "Место под", "всемирного содружества"
-            ]
             
-            clean_body_lines = []
-            for line in full_body.split('\n'):
+            # Основной текст + источник (parts[1])
+            raw_body = parts[1].strip() if len(parts) > 1 else ""
+
+            # --- ИДЕАЛЬНАЯ ОЧИСТКА ---
+            # 1. Сначала разбиваем на строки
+            lines = raw_body.split('\n')
+            
+            clean_lines = []
+            for line in lines:
                 line = line.strip()
                 if not line: continue
-                # Если строка содержит мусор, пропускаем её
-                if any(filter_word in line for filter_word in trash_filters):
-                    continue
-                clean_body_lines.append(line)
+                
+                # Стоп-слова: как только встречаем их, всё, что дальше — игнорируем
+                stop_phrases = ["Это издание было подготовлено", "За каждой цитатой", "Основное внимание", "Содержание ее", "В предисловии", "И если хоть одному"]
+                if any(phrase in line for phrase in stop_phrases):
+                    break
+                
+                clean_lines.append(line)
             
-            clean_body = "\n\n".join(clean_body_lines)
-            # -------------------------------
+            clean_body = "\n\n".join(clean_lines)
+            # --------------------------
 
             months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
                       "июля", "августа", "сентября", "октября", "ноября", "декабря"]
             
-            # Формируем красивое сообщение
+            # ФОРМИРОВАНИЕ ОТВЕТА
             response = (
                 f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
                 f"<b>{title.upper()}</b>\n\n"
-                f"{html.escape(quote)}\n\n"
+                f"<i>{html.escape(quote)}</i>\n\n"
                 f"{html.escape(clean_body)}"
             )
 
@@ -69,4 +70,4 @@ async def send_reflection(message: types.Message):
             await message.answer("⚠️ Размышление на сегодня не найдено.")
             
     except Exception as e:
-        print(f"Ошибка: {e}")
+        await message.answer(f"❌ Ошибка: {str(e)}")
