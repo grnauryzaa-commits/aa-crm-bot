@@ -6,17 +6,25 @@ import logging
 
 router = Router()
 
-DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railway.internal:5432/railway"
+DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 CHANNEL_ID = "@aa_nauryz"
 
 def format_reflection_text(title, text, today):
-    # Разделяем на [Цитата] и [Текст]
-    parts = text.split('***')
-    quote_source = parts[0].strip() if len(parts) > 0 else ""
-    raw_body = parts[1].strip() if len(parts) > 1 else text
+    # Очистка мусора
+    bad_phrases = ["Поделиться:", "Рассказать:", "Aудио-ежедневник", "Тег audio", 
+                   "Twitter", "Facebook", "Vkontakte", "WhatsApp", "Telegram", "EMail"]
     
-    # Жесткая обрезка по конкретной фразе, после которой идет мусор
-    clean_body = raw_body.split("...Место под")[0].strip()
+    clean_text = text
+    for phrase in bad_phrases:
+        clean_text = clean_text.split(phrase)[0]
+    
+    # Если заголовок попал в текст, вырезаем его, чтобы не дублировать
+    if title in clean_text:
+        clean_text = clean_text.split(title, 1)[1]
+    
+    # Принудительная вставка пустых строк для красоты (если их мало)
+    # Заменяем цепочки пробелов на одинарный пробел, сохраняя переносы
+    clean_text = "\n".join([line.strip() for line in clean_text.split('\n') if line.strip()])
     
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
@@ -25,8 +33,7 @@ def format_reflection_text(title, text, today):
         f"📖 <b>Ежедневные размышления АА</b>\n\n"
         f"📋 <b>{today.day} {months[today.month - 1]}</b>\n\n"
         f"<b>{title.upper()}</b>\n\n"
-        f"{html.escape(clean_body)}\n\n"
-        f"<i>{html.escape(quote_source)}</i>"
+        f"{html.escape(clean_text)}"
     )
 
 async def send_daily_reflection_to_channel(bot: Bot):
@@ -43,7 +50,6 @@ async def send_daily_reflection_to_channel(bot: Bot):
         if row:
             text_content = format_reflection_text(row[0], row[1], today)
             await bot.send_message(CHANNEL_ID, text_content, parse_mode="HTML")
-            logging.info("Рассылка выполнена.")
     except Exception as e:
         logging.error(f"Ошибка рассылки: {e}")
 
@@ -65,4 +71,5 @@ async def show_reflections(message: types.Message):
         else:
             await message.answer("⚠️ Размышление на сегодня не найдено.")
     except Exception as e:
-        await message.answer("❌ Ошибка.")
+        logging.error(f"Ошибка вывода: {e}")
+        await message.answer("❌ Ошибка при получении размышления.")
