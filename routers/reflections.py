@@ -7,12 +7,12 @@ import logging
 router = Router()
 
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
-CHANNEL_ID = "@aa_nauryz"
+# Замени на свой цифровой ID канала, если юзернейм продолжает глючить
+CHANNEL_ID = "@aa_nauryz" 
 
 def format_reflection_text(text, today):
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     
-    # Список строк, которые надо вырезать нафиг
     forbidden = [
         "WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
         "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp", 
@@ -23,13 +23,10 @@ def format_reflection_text(text, today):
     
     filtered = []
     for line in lines:
-        # Проверка на наличие мусора
         if any(f in line for f in forbidden):
             continue
-        # Проверка на дублирование даты в теле текста
         if f"{today.day}" in line and "июня" in line.lower() and len(line) < 20:
             continue
-            
         filtered.append(line)
     
     body = "\n\n".join(filtered)
@@ -57,6 +54,8 @@ async def send_daily_reflection_to_channel(bot: Bot):
         if row:
             text_content = format_reflection_text(row[0], today)
             await bot.send_message(CHANNEL_ID, text_content, parse_mode="HTML")
+        else:
+            logging.error("Размышление на сегодня не найдено в базе.")
     except Exception as e:
         logging.error(f"Ошибка рассылки: {e}")
 
@@ -80,3 +79,13 @@ async def show_reflections(message: types.Message):
     except Exception as e:
         logging.error(f"Ошибка вывода: {e}")
         await message.answer("❌ Ошибка при получении размышления.")
+
+@router.message(F.text == "/test_send")
+async def test_send(message: types.Message, bot: Bot):
+    await message.answer("Попытка запуска тестовой рассылки...")
+    try:
+        await send_daily_reflection_to_channel(bot)
+        await message.answer("Рассылка успешно выполнена!")
+    except Exception as e:
+        await message.answer(f"Ошибка: {str(e)}")
+        logging.error(f"Тест рассылки упал: {e}")
