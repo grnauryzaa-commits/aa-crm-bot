@@ -3,6 +3,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 router = Router()
 
+# Функция главного меню
 def get_main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌐 Онлайн группы", callback_data="sched_online")],
@@ -20,28 +21,36 @@ async def show_schedule_menu(message: types.Message):
 async def process_schedule(callback: types.CallbackQuery):
     data = callback.data
     
+    # Кнопка назад
     if data == "sched_back":
         await callback.message.edit_text("📅 <b>Расписание собраний АА</b>\nВыберите категорию:", 
                                          reply_markup=get_main_menu(), parse_mode="HTML")
         await callback.answer()
         return
 
-    # Тексты групп
+    # --- ТЕКСТЫ И КНОПКИ ГЕОЛОКАЦИИ ---
+    text = ""
+    buttons = []
+
     if data == "sched_online":
-        text = ("🌐 <b>ОНЛАЙН</b>\n\n• <b>Пробуждение</b> (Вт, Чт, Сб 21:00)\n• <b>Бірлік (каз)</b> (Чт 21:00)\n• <b>Шаг за шагом</b> (Вт 19:00)")
+        text = "🌐 <b>ОНЛАЙН</b>\n\n• <b>Пробуждение</b> (Вт, Чт, Сб 21:00)\n• <b>Бірлік (каз)</b> (Чт 21:00)\n• <b>Шаг за шагом</b> (Вт 19:00)"
     
     elif data == "sched_alm_1":
-        text = ("🏢 <b>Центр / Ауэзовский</b>\n\n• <b>Виктория</b> (Жубанова 3а: Вт, Чт 19:30, Сб 19:00)\n• <b>Шапагат (каз)</b> (Жубанова 3а: Пн, Ср 19:00, Сб 17:00)\n• <b>Чайхана (Новички)</b> (Жубанова 3а: Вс 11:00)\n• <b>Аксай</b> (Райымбека 493: Вс 13:00)\n• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64/47: Пн, Ср, Пт 19:00, Сб 14:00)")
+        text = "🏢 <b>Центр / Ауэзовский</b>\n\n• <b>Виктория / Шапагат / Чайхана</b> (Жубанова 3а)\n• <b>Аксай</b> (Райымбека 493)\n• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64/47)"
+        buttons.append([InlineKeyboardButton(text="📍 Виктория (2GIS)", url="https://2gis.kz/almaty/geo/9430047374991567/76.9066,43.2389")])
     
     elif data == "sched_alm_2":
-        text = ("🏢 <b>Зенкова / Тимирязева</b>\n\n• <b>8 марта</b> (Зенкова 24: Ежедневно 19:00, Вт/Чт 12:00)\n• <b>Женский клуб</b> (Зенкова 24: Ср 21:00, Вс 13:00)\n• <b>Мужская ААА</b> (Зенкова 24: Сб 17:00)\n• <b>Наурыз</b> (Тимирязева 42: Вт, Чт, Пт, Сб 19:00, Вс 15:00)\n• <b>Друзья Билла</b> (Тимирязева 42: Вт, Чт 12:00)")
+        text = "🏢 <b>Зенкова / Тимирязева</b>\n\n• <b>8 марта / Женская / Мужская</b> (Зенкова 24)\n• <b>Наурыз / Друзья Билла</b> (Тимирязева 42, Азия-Мост)"
+        buttons.append([InlineKeyboardButton(text="📍 8 марта (2GIS)", url="https://2gis.kz/almaty/search/%D0%97%D0%B5%D0%BD%D0%BA%D0%BE%D0%B2%D0%B0%2024")])
+        buttons.append([InlineKeyboardButton(text="📍 Азия-Мост (2GIS)", url="https://2gis.kz/almaty/firm/70000001035652591")])
     
     elif data == "sched_alm_3":
-        text = ("🏢 <b>Область / Другое</b>\n\n• <b>Талхиз (Талгар)</b> (Муратбаева 26: Пн, Чт, Пт 19:00)\n• <b>Боралдай</b> (Курчатова 13а: Сб 17:00)\n• <b>Турксиб</b> (уточнять по тел: +77478601105)")
+        text = "🏢 <b>Область / Другое</b>\n\n• <b>Талхиз (Талгар)</b> (Муратбаева 26)\n• <b>Боралдай</b> (Курчатова 13а)"
+        buttons.append([InlineKeyboardButton(text="📍 Талхиз (2GIS)", url="https://2gis.kz/almaty/geo/70000001045475756/77.234246,43.317702")])
 
-    back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ К списку категорий", callback_data="sched_back")]
-    ])
+    # Добавляем кнопку "Назад" в конец списка
+    buttons.append([InlineKeyboardButton(text="⬅️ К списку категорий", callback_data="sched_back")])
     
-    await callback.message.edit_text(text, reply_markup=back_kb, parse_mode="HTML", disable_web_page_preview=True)
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await callback.answer()
