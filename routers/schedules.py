@@ -3,54 +3,58 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 router = Router()
 
-# Функция главного меню
+# Главное меню
 def get_main_menu():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌐 Онлайн группы", callback_data="sched_online")],
-        [InlineKeyboardButton(text="🏢 Алматы: Центр / Ауэзовский", callback_data="sched_alm_1")],
-        [InlineKeyboardButton(text="🏢 Алматы: Зенкова / Тимирязева", callback_data="sched_alm_2")],
-        [InlineKeyboardButton(text="🏢 Алматы: Область / Другое", callback_data="sched_alm_3")]
+        [InlineKeyboardButton(text="🌐 Онлайн группы", callback_data="s_online")],
+        [InlineKeyboardButton(text="📍 Алматы: Жубанова 3а", callback_data="s_zhub")],
+        [InlineKeyboardButton(text="📍 Алматы: Зенкова 24", callback_data="s_zenk")],
+        [InlineKeyboardButton(text="📍 Алматы: Тимирязева 42", callback_data="s_tim")],
+        [InlineKeyboardButton(text="📍 Другие локации", callback_data="s_other")]
     ])
 
 @router.message(F.text == "📅 Расписание")
 async def show_schedule_menu(message: types.Message):
-    await message.answer("📅 <b>Расписание собраний АА</b>\nВыберите категорию:", 
-                         reply_markup=get_main_menu(), parse_mode="HTML")
+    await message.answer("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_main_menu(), parse_mode="HTML")
 
-@router.callback_query(F.data.startswith("sched_"))
-async def process_schedule(callback: types.CallbackQuery):
+@router.callback_query(F.data.startswith("s_"))
+async def callback_schedule(callback: types.CallbackQuery):
     data = callback.data
+    kb = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
     
-    # Кнопка назад
-    if data == "sched_back":
-        await callback.message.edit_text("📅 <b>Расписание собраний АА</b>\nВыберите категорию:", 
-                                         reply_markup=get_main_menu(), parse_mode="HTML")
-        await callback.answer()
-        return
+    if data == "s_back":
+        await callback.message.edit_text("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_main_menu(), parse_mode="HTML")
+    
+    elif data == "s_online":
+        text = ("🌐 <b>ОНЛАЙН</b>\n\n• <b>Пробуждение</b>: Вт, Чт, Сб 21:00\n<a href='https://us06web.zoom.us/j/82036099070'>Zoom</a> | Пароль: +77754565358\n\n"
+                "• <b>Бірлік (каз)</b>: Чт 21:00\n<a href='https://us06web.zoom.us/j/7473499478'>Zoom</a> | Пароль: +77074337408\n\n"
+                "• <b>Шаг за шагом</b>: Вт 19:00\n<a href='https://t.me/+JqgMpZCz_fY1OTVi'>Telegram</a>")
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML", disable_web_page_preview=True)
 
-    # --- ТЕКСТЫ И КНОПКИ ГЕОЛОКАЦИИ ---
-    text = ""
-    buttons = []
+    elif data == "s_zhub":
+        text = ("🏢 <b>Жубанова 3а (каб 301)</b>\n\n• <b>Виктория</b>: Вт, Чт 19:30, Сб 19:00\n• <b>Шапагат (каз)</b>: Пн, Ср 19:00, Сб 17:00\n• <b>Чайхана (Новички)</b>: Вс 11:00\n• <b>Женский клуб</b>: Вс 13:00")
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
-    if data == "sched_online":
-        text = "🌐 <b>ОНЛАЙН</b>\n\n• <b>Пробуждение</b> (Вт, Чт, Сб 21:00)\n• <b>Бірлік (каз)</b> (Чт 21:00)\n• <b>Шаг за шагом</b> (Вт 19:00)"
-    
-    elif data == "sched_alm_1":
-        text = "🏢 <b>Центр / Ауэзовский</b>\n\n• <b>Виктория / Шапагат / Чайхана</b> (Жубанова 3а)\n• <b>Аксай</b> (Райымбека 493)\n• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64/47)"
-        buttons.append([InlineKeyboardButton(text="📍 Виктория (2GIS)", url="https://2gis.kz/almaty/geo/9430047374991567/76.9066,43.2389")])
-    
-    elif data == "sched_alm_2":
-        text = "🏢 <b>Зенкова / Тимирязева</b>\n\n• <b>8 марта / Женская / Мужская</b> (Зенкова 24)\n• <b>Наурыз / Друзья Билла</b> (Тимирязева 42, Азия-Мост)"
-        buttons.append([InlineKeyboardButton(text="📍 8 марта (2GIS)", url="https://2gis.kz/almaty/search/%D0%97%D0%B5%D0%BD%D0%BA%D0%BE%D0%B2%D0%B0%2024")])
-        buttons.append([InlineKeyboardButton(text="📍 Азия-Мост (2GIS)", url="https://2gis.kz/almaty/firm/70000001035652591")])
-    
-    elif data == "sched_alm_3":
-        text = "🏢 <b>Область / Другое</b>\n\n• <b>Талхиз (Талгар)</b> (Муратбаева 26)\n• <b>Боралдай</b> (Курчатова 13а)"
-        buttons.append([InlineKeyboardButton(text="📍 Талхиз (2GIS)", url="https://2gis.kz/almaty/geo/70000001045475756/77.234246,43.317702")])
+    elif data == "s_zenk":
+        text = ("🏢 <b>Зенкова 24 (Дом Офицеров)</b>\n\n• <b>8 марта</b>: Ежедневно 19:00, Вт/Чт 12:00\n• <b>АлмА (Женская)</b>: Сб 12:00\n• <b>ААА (Мужская)</b>: Сб 17:00")
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
-    # Добавляем кнопку "Назад" в конец списка
-    buttons.append([InlineKeyboardButton(text="⬅️ К списку категорий", callback_data="sched_back")])
-    
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    elif data == "s_tim":
+        text = ("🏢 <b>Тимирязева 42 (Азия-Мост)</b>\n\n• <b>Друзья Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00")
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+
+    elif data == "s_other":
+        text = ("📍 <b>Другие локации</b>\n\n• <b>Аксай</b> (Райымбека 493): Вс 13:00\n"
+                "• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64/47): Пн, Ср, Пт 19:00\n"
+                "• <b>Боралдай</b> (Курчатова 13а): Сб 17:00\n"
+                "• <b>Талхиз (Талгар)</b> (Муратбаева 26): Пн, Чт, Пт 19:00\n"
+                "• <b>Турксиб</b>: Уточнять по тел +77478601105")
+        
+        # Кнопки с ссылками 2GIS для локаций
+        extra_kb = [
+            [InlineKeyboardButton(text="📍 Талхиз (2GIS)", url="https://2gis.kz/almaty/geo/70000001045475756/77.234246,43.317702")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]
+        ]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=extra_kb), parse_mode="HTML")
+
     await callback.answer()
