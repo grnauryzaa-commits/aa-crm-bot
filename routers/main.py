@@ -2,7 +2,7 @@ import asyncio
 import logging
 from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pytz import timezone
+from pytz import utc # Используем UTC для стабильности на сервере
 
 # Твой файл конфигурации
 from config import TOKEN 
@@ -23,7 +23,7 @@ from routers.reflections import send_daily_reflection_to_channel
 logging.basicConfig(level=logging.INFO)
 
 async def main():
-    # 1. Сначала создаем бота
+    # 1. Создаем бота
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
 
@@ -39,19 +39,20 @@ async def main():
         reflections_router
     )
 
-    # 3. Настраиваем планировщик (здесь 'bot' уже существует)
-    scheduler = AsyncIOScheduler(timezone=timezone("Asia/Almaty"))
+    # 3. Настраиваем планировщик на время UTC
+    # 07:00 Алматы = 01:00 UTC
+    scheduler = AsyncIOScheduler(timezone=utc)
     
     scheduler.add_job(
         send_daily_reflection_to_channel, 
         trigger='cron', 
-        hour=7, 
+        hour=1, 
         minute=0, 
-        args=[bot]  # Передаем созданный выше объект bot
+        args=[bot]
     )
     
     scheduler.start()
-    logging.info("Планировщик рассылки запущен (время: Алматы, 07:00).")
+    logging.info("Планировщик рассылки запущен (время: 01:00 UTC, что соответствует 07:00 Алматы).")
 
     # 4. Запускаем бота
     await dp.start_polling(bot)
