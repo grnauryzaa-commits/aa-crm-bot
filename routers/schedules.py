@@ -40,8 +40,16 @@ async def callback_schedule(callback: types.CallbackQuery):
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
     elif data == "s_tim":
-        text = ("🏢 <b>Тимирязева 42 (Азия-Мост)</b>\n\n• <b>Друзья Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00")
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+        text = ("🏢 <b>Тимирязева 42, корпус 23</b>\n\n"
+                "• <b>Друзья Билла</b>: Вт, Чт 12:00\n"
+                "• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00")
+        
+        # Добавляем кнопку с 2GIS для Тимирязева
+        kb_tim = [
+            [InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047374971407/76.904347,43.217837")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]
+        ]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_tim), parse_mode="HTML")
 
     elif data == "s_other":
         text = ("📍 <b>Другие локации</b>\n\n• <b>Аксай</b> (Райымбека 493): Вс 13:00\n"
