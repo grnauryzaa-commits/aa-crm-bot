@@ -62,12 +62,18 @@ async def callback_schedule(callback: types.CallbackQuery):
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
     elif data == "s_other":
-        text = ("📍 <b>Другие локации</b>\n\n• <b>Аксай</b> (Райымбека 493): Вс 13:00\n"
-                "• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64/47): Пн, Ср, Пт 19:00\n"
+        text = ("📍 <b>Другие локации</b>\n\n"
+                "• <b>Аксай</b> (Райымбека 493): Вс 13:00\n"
+                "• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64/47): Пн, Ср, Пт 19:00, Сб 14:00\n"
                 "• <b>Боралдай</b> (Курчатова 13а): Сб 17:00\n"
-                "• <b>Талхиз (Талгар)</b> (Муратбаева 26): Пн, Чт, Пт 19:00\n"
-                "• <b>Турксиб</b>: Уточнять по тел +77478601105")
-        kb = [[InlineKeyboardButton(text="📍 Талхиз (2GIS)", url="https://2gis.kz/almaty/geo/70000001045475756/77.234246,43.317702")],
+                "• <b>Талхиз (Талгар)</b> (Муратбаева 26): Пн, Чт, Пт 19:00\n\n"
+                "• <b>Турксиб</b>:\n"
+                "Адрес: Уточнять по номеру\n"
+                "Время: Вт, Чт 19:00-20:30; Вс (открытая) 17:00-18:30\n"
+                "Контакты: +7 747-860-11-05")
+        
+        kb = [[InlineKeyboardButton(text="📍 Турксиб (2GIS)", url="https://2gis.kz/almaty/geo/9430047374991567/76.955136,43.330053")],
+              [InlineKeyboardButton(text="📍 Талхиз (2GIS)", url="https://2gis.kz/almaty/geo/70000001045475756/77.234246,43.317702")],
               [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
