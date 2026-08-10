@@ -8,7 +8,7 @@ router = Router()
 
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 # Замени на свой цифровой ID канала, если юзернейм продолжает глючить
-CHANNEL_ID = "@aa_nauryz" 
+CHANNEL_ID = -8304617041
 
 def format_reflection_text(text, today):
     lines = [l.strip() for l in text.split('\n') if l.strip()]
