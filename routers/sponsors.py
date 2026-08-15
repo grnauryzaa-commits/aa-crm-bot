@@ -15,8 +15,7 @@ class EditSponsorState(StatesGroup):
 async def sponsors_menu(event: Message | CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers_0")],
-        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
+        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")]
     ])
     if isinstance(event, Message):
         await event.answer("👥 Выберите список:", reply_markup=keyboard)
@@ -64,7 +63,7 @@ async def show_list_page(callback: CallbackQuery):
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    # Заменено на единый стиль кнопки возврата к выбору списков
+    # Кнопка возврата к выбору категории (Братья / Сестры)
     keyboard.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_sponsors")])
 
     await callback.message.edit_text(
