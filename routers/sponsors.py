@@ -1,9 +1,15 @@
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 import psycopg2
-from config import DATABASE_URL
+from config import DATABASE_URL, ADMINS
 
 router = Router()
+
+# Состояния для редактирования конкретного поля
+class EditSponsorState(StatesGroup):
+    waiting_for_new_value = State()
 
 @router.message(F.text == "🤝 Спонсоры")
 @router.callback_query(F.data == "menu_sponsors")
@@ -21,8 +27,8 @@ async def sponsors_menu(event: Message | CallbackQuery):
 @router.callback_query(F.data.startswith(("list_brothers_", "list_sisters_")))
 async def show_list_page(callback: CallbackQuery):
     parts = callback.data.split("_")
-    list_type = parts[1]  # brothers или sisters
-    page = int(parts[2])  # номер страницы
+    list_type = parts[1]
+    page = int(parts[2])
     
     gender_filter = "OR gender ILIKE '%муж%'" if list_type == "brothers" else "OR gender ILIKE '%жен%'"
     label = "Братья" if list_type == "brothers" else "Сестры"
@@ -39,9 +45,8 @@ async def show_list_page(callback: CallbackQuery):
         await callback.answer(f"Список {label} пока пуст.", show_alert=True)
         return
 
-    PER_PAGE = 5  # Количество спонсоров на одной странице
+    PER_PAGE = 5
     total_pages = (len(all_sponsors) + PER_PAGE - 1) // PER_PAGE
-    
     start_idx = page * PER_PAGE
     end_idx = start_idx + PER_PAGE
     current_sponsors = all_sponsors[start_idx:end_idx]
@@ -50,7 +55,6 @@ async def show_list_page(callback: CallbackQuery):
     for uid, name in current_sponsors:
         keyboard.append([InlineKeyboardButton(text=name, callback_data=f"view_sp_{uid}_{list_type}_{page}")])
 
-    # Кнопки пагинации (Вперед / Назад)
     nav_buttons = []
     if page > 0:
         nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"list_{list_type}_{page - 1}"))
@@ -87,6 +91,92 @@ async def show_details(callback: CallbackQuery):
                 f"📍 Город: {city}\n📖 Опыт: {program_info}\n"
                 f"✈️ Telegram: @{username}\n📞 Телефон: {phone}")
         
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        keyboard = [
             [InlineKeyboardButton(text="« К списку", callback_data=f"list_{list_type}_{page}")]
-        ]))
+        ]
+        
+        # Проверяем: если тот, кто смотрит — это сам владелец карточки ИЛИ администратор, показываем кнопку редактирования
+        current_user_id = callback.from_user.id
+        if current_user_id == int(user_id) or current_user_id in ADMINS:
+            keyboard.insert(0, [InlineKeyboardButton(text="✏️ Редактировать анкету", callback_data=f"edit_menu_{user_id}_{list_type}_{page}")])
+
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+
+# Меню выбора: какое именно поле изменить
+@router.callback_query(F.data.startswith("edit_menu_"))
+async def edit_menu(callback: CallbackQuery):
+    parts = callback.data.split("_")
+    user_id = parts[2]
+    list_type = parts[3]
+    page = parts[4]
+
+    # Защита на случай взлома callback_data
+    if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
+        await callback.answer("⚠️ Вы можете редактировать только свою анкету!", show_alert=True)
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🕊 Срок трезвости", callback_data=f"edit_field_{user_id}_sobriety_{list_type}_{page}")],
+        [InlineKeyboardButton(text="📍 Город", callback_data=f"edit_field_{user_id}_city_{list_type}_{page}")],
+        [InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}")],
+        [InlineKeyboardButton(text="📖 Опыт / Программа", callback_data=f"edit_field_{user_id}_program_info_{list_type}_{page}")],
+        [InlineKeyboardButton(text="« Отмена", callback_data=f"view_sp_{user_id}_{list_type}_{page}")]
+    ])
+    await callback.message.edit_text("⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard)
+
+# Шаг начала изменения конкретного поля
+@router.callback_query(F.data.startswith("edit_field_"))
+async def start_editing_field(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    user_id = parts[2]
+    field_name = parts[3]
+    list_type = parts[4]
+    page = parts[5]
+
+    if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
+        await callback.answer("⚠️ Доступ запрещен!", show_alert=True)
+        return
+
+    await state.update_data(target_user_id=user_id, field_name=field_name, list_type=list_type, page=page)
+    await state.set_state(EditSponsorState.waiting_for_new_value)
+
+    field_titles = {
+        "sobriety": "новый срок трезвости",
+        "city": "новый город",
+        "phone": "новый номер телефона",
+        "program_info": "новую информацию об опыте"
+    }
+
+    await callback.message.answer(f"✍️ Напишите {field_titles.get(field_name, 'новое значение')} в чат:")
+    await callback.answer()
+
+# Сохранение нового значения в БД
+@router.message(EditSponsorState.waiting_for_new_value)
+async def save_edited_field(message: Message, state: FSMContext):
+    new_value = message.text
+    data = await state.get_data()
+    target_user_id = data.get("target_user_id")
+    field_name = data.get("field_name")
+
+    # Безопасный список разрешенных колонок для предотвращения SQL-инъекций
+    allowed_fields = ["sobriety", "city", "phone", "program_info"]
+    if field_name not in allowed_fields:
+        await message.error("Ошибка поля.")
+        await state.clear()
+        return
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        query = f"UPDATE sponsors SET {field_name} = %s WHERE user_id = %s;"
+        cur.execute(query, (new_value, target_user_id))
+        conn.commit()
+        cur.close()
+        conn.close()
+
+        await message.answer("✅ Данные успешно обновлены!")
+        await state.clear()
+    except Exception as e:
+        print(f"Ошибка при обновлении: {e}")
+        await message.answer("❌ Произошла ошибка при сохранении.")
+        await state.clear()
