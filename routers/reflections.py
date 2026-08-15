@@ -62,14 +62,35 @@ async def send_morning_prayer_to_channel(bot: Bot):
     except Exception as e:
         logging.error(f"Ошибка отправки молитвы: {e}")
 
-# Команда для проверки размышлений
-@router.message(F.text == "/test_send")
-async def test_send_reflection(message: types.Message, bot: Bot):
-    await send_daily_reflection_to_channel(bot)
-    await message.answer("Ежедневные размышления отправлены в канал.")
+async def send_evening_prayer_to_channel(bot: Bot):
+    text = (
+        "🌙 <b>Действия 11 шага по БК АА</b>\n"
+        "<i>Вечерняя Часть (Подведение итогов)</i>\n\n"
+        "Вечером, перед сном, мы подводим итоги дня:\n\n"
+        "1. Был ли я сегодня эгоистичен? Нечестен? Озлоблен? Испытывал ли страх?\n"
+        "2. Должен ли я перед кем-то извиниться?\n"
+        "3. Был ли я добр и внимателен к окружающим?\n"
+        "4. Что я мог бы сделать лучше?\n"
+        "5. Думал ли я о том, чем могу быть полезен другим?\n\n"
+        "<i>Затем мы прощаем всех, а свои ошибки вручаем Высшей Силе, прося о прощении и избавлении.</i>\n\n"
+        "🙏 <b>Спокойной ночи!</b>"
+    )
+    try:
+        await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Ошибка отправки вечерней молитвы: {e}")
 
-# Команда для проверки молитвы
+@router.message(F.text == "/test_send")
+async def test_send(message: types.Message, bot: Bot):
+    await send_daily_reflection_to_channel(bot)
+    await message.answer("Ежедневные размышления отправлены.")
+
 @router.message(F.text == "/test_prayer")
 async def test_prayer(message: types.Message, bot: Bot):
     await send_morning_prayer_to_channel(bot)
-    await message.answer("Молитва 11 шага отправлена в канал.")
+    await message.answer("Утренняя молитва 11 шага отправлена.")
+
+@router.message(F.text == "/test_evening")
+async def test_evening(message: types.Message, bot: Bot):
+    await send_evening_prayer_to_channel(bot)
+    await message.answer("Вечерняя молитва 11 шага отправлена.")

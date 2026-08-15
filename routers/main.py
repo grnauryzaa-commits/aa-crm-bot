@@ -12,7 +12,12 @@ from routers.sponsors import router as sponsors_router
 from routers.admin import router as admin_router
 from routers.help import router as help_router
 from routers.schedules import router as schedules_router
-from routers.reflections import router as reflections_router, send_daily_reflection_to_channel, send_morning_prayer_to_channel
+from routers.reflections import (
+    router as reflections_router, 
+    send_daily_reflection_to_channel, 
+    send_morning_prayer_to_channel,
+    send_evening_prayer_to_channel
+)
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,9 +32,11 @@ async def main():
     scheduler.add_job(send_daily_reflection_to_channel, 'cron', hour=1, minute=0, args=[bot])
     # 06:30 Алматы = 01:30 UTC
     scheduler.add_job(send_morning_prayer_to_channel, 'cron', hour=1, minute=30, args=[bot])
+    # 23:00 Алматы = 18:00 UTC
+    scheduler.add_job(send_evening_prayer_to_channel, 'cron', hour=18, minute=0, args=[bot])
     
     scheduler.start()
-    logging.info("Планировщик запущен: 06:00 (размышления), 06:30 (молитва) по Алматы.")
+    logging.info("Планировщик запущен: 06:00 (размышления), 06:30 (утр. молитва), 23:00 (веч. молитва) по Алматы.")
 
     await dp.start_polling(bot)
 
