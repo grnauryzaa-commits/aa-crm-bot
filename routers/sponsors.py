@@ -16,7 +16,8 @@ class EditSponsorState(StatesGroup):
 async def sponsors_menu(event: Message | CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers_0")],
-        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")]
+        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")] # <--- Кнопка назад добавлена сюда
     ])
     if isinstance(event, Message):
         await event.answer("👥 Выберите список:", reply_markup=keyboard)
