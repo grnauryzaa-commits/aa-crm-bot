@@ -6,7 +6,7 @@ import logging
 router = Router()
 
 # ⚠️ ВПИШИТЕ СЮДА СВОЙ ЧИСЛОВОЙ ТЕЛЕГРАМ ID (И ДРУГИХ АДМИНОВ ЧЕРЕЗ ЗАПЯТУЮ)
-ADMIN_IDS = [123456789] 
+ADMIN_IDS = [7374545230] 
 
 async def send_sponsor_request_to_admin(bot: Bot, tg_id: int, data: dict):
     # Создаем инлайн-кнопки под карточкой для админа
