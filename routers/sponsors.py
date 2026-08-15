@@ -117,7 +117,7 @@ async def edit_menu(callback: CallbackQuery):
         [InlineKeyboardButton(text="🕊 Срок трезвости", callback_data=f"edit_field_{user_id}_sobriety_{list_type}_{page}")],
         [InlineKeyboardButton(text="📍 Город", callback_data=f"edit_field_{user_id}_city_{list_type}_{page}")],
         [InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}")],
-        [InlineKeyboardButton(text="📖 Опыт / Программа", callback_data=f"edit_field_{user_id}_program_info_{list_type}_{page}")],
+        [InlineKeyboardButton(text="📖 Опыт / Программа", callback_data=f"edit_field_{user_id}_programinfo_{list_type}_{page}")], # <--- убрали подчёркивание
         [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_sp_{user_id}_{list_type}_{page}")]
     ])
     await callback.message.edit_text("⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard)
@@ -129,6 +129,10 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
     field_name = parts[3]
     list_type = parts[4]
     page = parts[5]
+
+    # Преобразуем обратно для БД
+    if field_name == "programinfo":
+        field_name = "program_info"
 
     if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
         await callback.answer("⚠️ Доступ запрещен!", show_alert=True)
