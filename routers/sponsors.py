@@ -5,7 +5,7 @@ from config import DATABASE_URL
 
 router = Router()
 
-# Ловим текстовую кнопку из главного меню нижней клавиатуры
+# Ловим текстовую кнопку из главного меню
 @router.message(F.text == "🤝 Спонсоры")
 async def sponsors_text_menu(message: Message):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -16,7 +16,7 @@ async def sponsors_text_menu(message: Message):
     ])
     await message.answer("👥 Выберите список:", reply_markup=keyboard)
 
-# Ловим callback-кнопку (если она вызывается изнутри)
+# Ловим callback-кнопку для меню
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -28,12 +28,17 @@ async def sponsors_menu(callback: CallbackQuery):
     await callback.message.edit_text("👥 Выберите список:", reply_markup=keyboard)
     await callback.answer()
 
+# Список Братьев (ищем "брат" или "мужской")
 @router.callback_query(F.data == "list_brothers")
 async def show_brothers(callback: CallbackQuery):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        cur.execute("SELECT name, gender, age, sobriety, city, username, phone, program_info FROM sponsors WHERE gender ILIKE '%брат%';")
+        cur.execute("""
+            SELECT name, gender, age, sobriety, city, username, phone, program_info 
+            FROM sponsors 
+            WHERE gender ILIKE '%брат%' OR gender ILIKE '%муж%';
+        """)
         sponsors = cur.fetchall()
         cur.close()
         conn.close()
@@ -55,17 +60,23 @@ async def show_brothers(callback: CallbackQuery):
                 f"📞 Телефон: {phone}"
             )
             await callback.message.answer(text)
+        await callback.answer()
 
     except Exception as e:
         print(f"Ошибка при загрузке братьев: {e}")
-        await callback.answer("Произошла ошибка при загрузке списка.", show_alert=True)
+        await callback.answer("Ошибка при загрузке.", show_alert=True)
 
+# Список Сестер (ищем "сестр" или "жен")
 @router.callback_query(F.data == "list_sisters")
 async def show_sisters(callback: CallbackQuery):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        cur.execute("SELECT name, gender, age, sobriety, city, username, phone, program_info FROM sponsors WHERE gender ILIKE '%сестр%';")
+        cur.execute("""
+            SELECT name, gender, age, sobriety, city, username, phone, program_info 
+            FROM sponsors 
+            WHERE gender ILIKE '%сестр%' OR gender ILIKE '%жен%';
+        """)
         sponsors = cur.fetchall()
         cur.close()
         conn.close()
@@ -87,7 +98,8 @@ async def show_sisters(callback: CallbackQuery):
                 f"📞 Телефон: {phone}"
             )
             await callback.message.answer(text)
+        await callback.answer()
 
     except Exception as e:
         print(f"Ошибка при загрузке сестер: {e}")
-        await callback.answer("Произошла ошибка при загрузке списка.", show_alert=True)
+        await callback.answer("Ошибка при загрузке.", show_alert=True)
