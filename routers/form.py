@@ -4,6 +4,7 @@ from aiogram.types import Message, ReplyKeyboardRemove, InlineKeyboardMarkup, In
 from routers.states import SponsorForm
 from routers.menu import get_main_menu_keyboard
 from config import ADMINS
+import database as db
 
 router = Router()
 
@@ -54,18 +55,21 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     tg_id = message.from_user.id
     
-    import database as db
-    await db.save_sponsor_draft(
-        tg_id=tg_id,
-        name=data.get('name'),
-        gender=data.get('gender'),
-        age=data.get('age'),
-        sobriety=data.get('sobriety'),
-        city=data.get('city'),
-        username=message.from_user.username or "нет",
-        phone=data.get('phone'),
-        program_info=data.get('program_info')
-    )
+    sponsor_data = {
+        'name': data.get('name'),
+        'gender': data.get('gender'),
+        'age': data.get('age'),
+        'sobriety': data.get('sobriety'),
+        'city': data.get('city'),
+        'program_info': data.get('program_info'),
+        'username': message.from_user.username or "нет",
+        'phone': data.get('phone')
+    }
+
+    try:
+        await db.save_sponsor_draft(tg_id, sponsor_data)
+    except Exception as e:
+        print(f"Ошибка сохранения черновика в БД: {e}")
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -77,13 +81,13 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
     admin_text = (
         "🔔 **ЗАЯВКА НА РЕГИСТРАЦИЮ СПОНСОРА**\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        f"👤 **Имя:** {data.get('name')} ({data.get('gender')})\n"
-        f"📅 **Возраст:** {data.get('age')}\n"
-        f"🕊 **Трезвость:** {data.get('sobriety')}\n"
-        f"📍 **Город:** {data.get('city')}\n\n"
-        f"📖 **Опыт/Программа:** {data.get('program_info')}\n"
-        f"✈️ **Telegram:** @{message.from_user.username or 'нет'}\n"
-        f"📞 **Телефон:** {data.get('phone')}\n"
+        f"👤 **Имя:** {sponsor_data['name']} ({sponsor_data['gender']})\n"
+        f"📅 **Возраст:** {sponsor_data['age']}\n"
+        f"🕊 **Трезвость:** {sponsor_data['sobriety']}\n"
+        f"📍 **Город:** {sponsor_data['city']}\n\n"
+        f"📖 **Опыт/Программа:** {sponsor_data['program_info']}\n"
+        f"✈️ **Telegram:** @{sponsor_data['username']}\n"
+        f"📞 **Телефон:** {sponsor_data['phone']}\n"
         "━━━━━━━━━━━━━━━━━━"
     )
 
