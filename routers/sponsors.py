@@ -35,7 +35,6 @@ async def show_list_page(callback: CallbackQuery):
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    # Запрашиваем имя, возраст, город и срок трезвости для кнопок
     cur.execute(f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE gender ILIKE '%{db_keyword}%' {gender_filter};")
     all_sponsors = cur.fetchall()
     cur.close()
@@ -53,7 +52,6 @@ async def show_list_page(callback: CallbackQuery):
 
     keyboard = []
     for uid, name, age, city, sobriety in current_sponsors:
-        # Информативная кнопка: Имя, Возраст | Город | Срок трезвости
         button_text = f"{name}, {age} лет | {city or 'Город'} | {sobriety}"
         keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"view_sp_{uid}_{list_type}_{page}")])
 
@@ -115,6 +113,7 @@ async def edit_menu(callback: CallbackQuery):
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📅 Возраст", callback_data=f"edit_field_{user_id}_age_{list_type}_{page}")],
         [InlineKeyboardButton(text="🕊 Срок трезвости", callback_data=f"edit_field_{user_id}_sobriety_{list_type}_{page}")],
         [InlineKeyboardButton(text="📍 Город", callback_data=f"edit_field_{user_id}_city_{list_type}_{page}")],
         [InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}")],
@@ -139,6 +138,7 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
     await state.set_state(EditSponsorState.waiting_for_new_value)
 
     field_titles = {
+        "age": "новый возраст (цифрой от 18 до 100)",
         "sobriety": "новый срок трезвости",
         "city": "новый город",
         "phone": "новый номер телефона",
@@ -150,16 +150,21 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
 
 @router.message(EditSponsorState.waiting_for_new_value)
 async def save_edited_field(message: Message, state: FSMContext):
-    new_value = message.text
+    new_value = message.text.strip()
     data = await state.get_data()
     target_user_id = data.get("target_user_id")
     field_name = data.get("field_name")
 
-    allowed_fields = ["sobriety", "city", "phone", "program_info"]
+    allowed_fields = ["age", "sobriety", "city", "phone", "program_info"]
     if field_name not in allowed_fields:
         await message.answer("Ошибка поля.")
         await state.clear()
         return
+
+    if field_name == "age":
+        if not new_value.isdigit() or not (18 <= int(new_value) <= 100):
+            await message.answer("⚠️ Возраст должен состоять только из цифр (от 18 до 100). Попробуйте еще раз:")
+            return
 
     try:
         conn = psycopg2.connect(DATABASE_URL)
