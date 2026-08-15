@@ -87,9 +87,16 @@ async def show_details(callback: CallbackQuery):
 
     if sp:
         name, gender, age, sobriety, city, username, phone, program_info = sp
+        
+        # Если username указан, формируем обычную ссылку, если нет — скрытую ссылку по ID
+        if username and username != "-":
+            tg_contact = f"@{username}"
+        else:
+            tg_contact = f"[Написать в личку](tg://user?id={user_id})"
+
         text = (f"👤 **{name}** ({gender}), {age} лет\n🕊 Трезвость: {sobriety}\n"
                 f"📍 Город: {city}\n📖 Опыт: {program_info}\n"
-                f"✈️ Telegram: @{username}\n📞 Телефон: {phone}")
+                f"✈️ Telegram: {tg_contact}\n📞 Телефон: {phone}")
         
         keyboard = [
             [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"list_{list_type}_{page}")]
@@ -99,7 +106,8 @@ async def show_details(callback: CallbackQuery):
         if current_user_id == int(user_id) or current_user_id in ADMINS:
             keyboard.insert(0, [InlineKeyboardButton(text="✏️ Редактировать анкету", callback_data=f"edit_menu_{user_id}_{list_type}_{page}")])
 
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+        # Используем parse_mode="Markdown", чтобы ссылки корректно работали
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
 @router.callback_query(F.data.startswith("edit_menu_"))
 async def edit_menu(callback: CallbackQuery):
@@ -117,7 +125,7 @@ async def edit_menu(callback: CallbackQuery):
         [InlineKeyboardButton(text="🕊 Срок трезвости", callback_data=f"edit_field_{user_id}_sobriety_{list_type}_{page}")],
         [InlineKeyboardButton(text="📍 Город", callback_data=f"edit_field_{user_id}_city_{list_type}_{page}")],
         [InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}")],
-        [InlineKeyboardButton(text="📖 Опыт / Программа", callback_data=f"edit_field_{user_id}_programinfo_{list_type}_{page}")], # <--- убрали подчёркивание
+        [InlineKeyboardButton(text="📖 Опыт / Программа", callback_data=f"edit_field_{user_id}_programinfo_{list_type}_{page}")],
         [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_sp_{user_id}_{list_type}_{page}")]
     ])
     await callback.message.edit_text("⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard)
@@ -130,7 +138,6 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
     list_type = parts[4]
     page = parts[5]
 
-    # Преобразуем обратно для БД
     if field_name == "programinfo":
         field_name = "program_info"
 
