@@ -1,105 +1,62 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Message
 import psycopg2
 from config import DATABASE_URL
 
 router = Router()
 
-# Ловим текстовую кнопку из главного меню
 @router.message(F.text == "🤝 Спонсоры")
-async def sponsors_text_menu(message: Message):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers"),
-            InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters")
-        ]
-    ])
-    await message.answer("👥 Выберите список:", reply_markup=keyboard)
-
-# Ловим callback-кнопку для меню
 @router.callback_query(F.data == "menu_sponsors")
-async def sponsors_menu(callback: CallbackQuery):
+async def sponsors_menu(event: Message | CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers"),
-            InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters")
-        ]
+        [InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers")],
+        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters")]
     ])
-    await callback.message.edit_text("👥 Выберите список:", reply_markup=keyboard)
-    await callback.answer()
+    if isinstance(event, Message):
+        await event.answer("👥 Выберите список:", reply_markup=keyboard)
+    else:
+        await event.message.edit_text("👥 Выберите список:", reply_markup=keyboard)
+        await event.answer()
 
-# Список Братьев (ищем "брат" или "мужской")
-@router.callback_query(F.data == "list_brothers")
-async def show_brothers(callback: CallbackQuery):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT name, gender, age, sobriety, city, username, phone, program_info 
-            FROM sponsors 
-            WHERE gender ILIKE '%брат%' OR gender ILIKE '%муж%';
-        """)
-        sponsors = cur.fetchall()
-        cur.close()
-        conn.close()
+@router.callback_query(F.data.in_(["list_brothers", "list_sisters"]))
+async def show_list(callback: CallbackQuery):
+    gender_filter = "OR gender ILIKE '%муж%'" if callback.data == "list_brothers" else "OR gender ILIKE '%жен%'"
+    label = "Братья" if callback.data == "list_brothers" else "Сестры"
+    
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(f"SELECT user_id, name FROM sponsors WHERE gender ILIKE '%{label[:4]}%' {gender_filter};")
+    sponsors = cur.fetchall()
+    cur.close()
+    conn.close()
 
-        if not sponsors:
-            await callback.answer("Список Братья пока пуст.", show_alert=True)
-            return
+    if not sponsors:
+        await callback.answer(f"Список {label} пока пуст.", show_alert=True)
+        return
 
-        await callback.message.edit_text("👦 **Список спонсоров (Братья):**", reply_markup=None)
-        
-        for sp in sponsors:
-            name, gender, age, sobriety, city, username, phone, program_info = sp
-            text = (
-                f"👤 **{name}** ({gender}), {age} лет\n"
-                f"🕊 Трезвость: {sobriety}\n"
-                f"📍 Город: {city}\n"
-                f"📖 Опыт: {program_info}\n"
-                f"✈️ Telegram: @{username}\n"
-                f"📞 Телефон: {phone}"
-            )
-            await callback.message.answer(text)
-        await callback.answer()
+    # Создаем клавиатуру с именами
+    keyboard = []
+    for uid, name in sponsors:
+        keyboard.append([InlineKeyboardButton(text=name, callback_data=f"view_sp_{uid}")])
+    keyboard.append([InlineKeyboardButton(text="« Назад", callback_data="menu_sponsors")])
 
-    except Exception as e:
-        print(f"Ошибка при загрузке братьев: {e}")
-        await callback.answer("Ошибка при загрузке.", show_alert=True)
+    await callback.message.edit_text(f"📖 Список ({label}):\nНажми на имя, чтобы увидеть детали:", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
-# Список Сестер (ищем "сестр" или "жен")
-@router.callback_query(F.data == "list_sisters")
-async def show_sisters(callback: CallbackQuery):
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT name, gender, age, sobriety, city, username, phone, program_info 
-            FROM sponsors 
-            WHERE gender ILIKE '%сестр%' OR gender ILIKE '%жен%';
-        """)
-        sponsors = cur.fetchall()
-        cur.close()
-        conn.close()
+@router.callback_query(F.data.startswith("view_sp_"))
+async def show_details(callback: CallbackQuery):
+    user_id = callback.data.split("_")[2]
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("SELECT name, gender, age, sobriety, city, username, phone, program_info FROM sponsors WHERE user_id = %s;", (user_id,))
+    sp = cur.fetchone()
+    cur.close()
+    conn.close()
 
-        if not sponsors:
-            await callback.answer("Список Сестры пока пуст.", show_alert=True)
-            return
-
-        await callback.message.edit_text("👧 **Список спонсоров (Сестры):**", reply_markup=None)
-        
-        for sp in sponsors:
-            name, gender, age, sobriety, city, username, phone, program_info = sp
-            text = (
-                f"👤 **{name}** ({gender}), {age} лет\n"
-                f"🕊 Трезвость: {sobriety}\n"
-                f"📍 Город: {city}\n"
-                f"📖 Опыт: {program_info}\n"
-                f"✈️ Telegram: @{username}\n"
-                f"📞 Телефон: {phone}"
-            )
-            await callback.message.answer(text)
-        await callback.answer()
-
-    except Exception as e:
-        print(f"Ошибка при загрузке сестер: {e}")
-        await callback.answer("Ошибка при загрузке.", show_alert=True)
+    if sp:
+        name, gender, age, sobriety, city, username, phone, program_info = sp
+        text = (f"👤 **{name}** ({gender}), {age} лет\n🕊 Трезвость: {sobriety}\n"
+                f"📍 Город: {city}\n📖 Опыт: {program_info}\n"
+                f"✈️ Telegram: @{username}\n📞 Телефон: {phone}")
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="« Назад к списку", callback_data="list_brothers")] # Упрощено
+        ]))
