@@ -10,4 +10,4 @@ if not DATABASE_URL:
     raise ValueError("ОШИБКА: Переменная окружения 'DATABASE_URL' не найдена!")
 
 # Список ID администраторов
-ADMINS = [7374545230]
+ADMINS = [7374545230, 697554935, 403343697]
