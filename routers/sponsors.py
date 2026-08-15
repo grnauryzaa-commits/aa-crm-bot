@@ -7,7 +7,6 @@ from config import DATABASE_URL, ADMINS
 
 router = Router()
 
-# Состояния для редактирования конкретного поля
 class EditSponsorState(StatesGroup):
     waiting_for_new_value = State()
 
@@ -17,7 +16,7 @@ async def sponsors_menu(event: Message | CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers_0")],
         [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")] # <--- Кнопка назад добавлена сюда
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_main")]
     ])
     if isinstance(event, Message):
         await event.answer("👥 Выберите список:", reply_markup=keyboard)
@@ -65,7 +64,8 @@ async def show_list_page(callback: CallbackQuery):
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    keyboard.append([InlineKeyboardButton(text="« Главное меню", callback_data="menu_sponsors")])
+    # Заменено на единый стиль кнопки возврата к выбору списков
+    keyboard.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_sponsors")])
 
     await callback.message.edit_text(
         f"📖 Список ({label}) — Страница {page + 1} из {total_pages}:\nНажми на имя для просмотра деталей:",
@@ -93,17 +93,15 @@ async def show_details(callback: CallbackQuery):
                 f"✈️ Telegram: @{username}\n📞 Телефон: {phone}")
         
         keyboard = [
-            [InlineKeyboardButton(text="« К списку", callback_data=f"list_{list_type}_{page}")]
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"list_{list_type}_{page}")]
         ]
         
-        # Проверяем: если тот, кто смотрит — это сам владелец карточки ИЛИ администратор, показываем кнопку редактирования
         current_user_id = callback.from_user.id
         if current_user_id == int(user_id) or current_user_id in ADMINS:
             keyboard.insert(0, [InlineKeyboardButton(text="✏️ Редактировать анкету", callback_data=f"edit_menu_{user_id}_{list_type}_{page}")])
 
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
-# Меню выбора: какое именно поле изменить
 @router.callback_query(F.data.startswith("edit_menu_"))
 async def edit_menu(callback: CallbackQuery):
     parts = callback.data.split("_")
@@ -111,7 +109,6 @@ async def edit_menu(callback: CallbackQuery):
     list_type = parts[3]
     page = parts[4]
 
-    # Защита на случай взлома callback_data
     if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
         await callback.answer("⚠️ Вы можете редактировать только свою анкету!", show_alert=True)
         return
@@ -121,11 +118,10 @@ async def edit_menu(callback: CallbackQuery):
         [InlineKeyboardButton(text="📍 Город", callback_data=f"edit_field_{user_id}_city_{list_type}_{page}")],
         [InlineKeyboardButton(text="📞 Телефон", callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}")],
         [InlineKeyboardButton(text="📖 Опыт / Программа", callback_data=f"edit_field_{user_id}_program_info_{list_type}_{page}")],
-        [InlineKeyboardButton(text="« Отмена", callback_data=f"view_sp_{user_id}_{list_type}_{page}")]
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"view_sp_{user_id}_{list_type}_{page}")]
     ])
     await callback.message.edit_text("⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard)
 
-# Шаг начала изменения конкретного поля
 @router.callback_query(F.data.startswith("edit_field_"))
 async def start_editing_field(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
@@ -151,7 +147,6 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(f"✍️ Напишите {field_titles.get(field_name, 'новое значение')} в чат:")
     await callback.answer()
 
-# Сохранение нового значения в БД
 @router.message(EditSponsorState.waiting_for_new_value)
 async def save_edited_field(message: Message, state: FSMContext):
     new_value = message.text
@@ -159,10 +154,9 @@ async def save_edited_field(message: Message, state: FSMContext):
     target_user_id = data.get("target_user_id")
     field_name = data.get("field_name")
 
-    # Безопасный список разрешенных колонок для предотвращения SQL-инъекций
     allowed_fields = ["sobriety", "city", "phone", "program_info"]
     if field_name not in allowed_fields:
-        await message.error("Ошибка поля.")
+        await message.answer("Ошибка поля.")
         await state.clear()
         return
 
