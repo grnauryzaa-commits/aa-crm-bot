@@ -1,10 +1,22 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 import psycopg2
 from config import DATABASE_URL
 
 router = Router()
 
+# Ловим текстовую кнопку из главного меню нижней клавиатуры
+@router.message(F.text == "🤝 Спонсоры")
+async def sponsors_text_menu(message: Message):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers"),
+            InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters")
+        ]
+    ])
+    await message.answer("👥 Выберите список:", reply_markup=keyboard)
+
+# Ловим callback-кнопку (если она вызывается изнутри)
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu(callback: CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -21,7 +33,6 @@ async def show_brothers(callback: CallbackQuery):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        # Ищем гибко по слову "брат" (независимо от регистра и падежа)
         cur.execute("SELECT name, gender, age, sobriety, city, username, phone, program_info FROM sponsors WHERE gender ILIKE '%брат%';")
         sponsors = cur.fetchall()
         cur.close()
@@ -54,7 +65,6 @@ async def show_sisters(callback: CallbackQuery):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        # Ищем гибко по слову "сестр" (сестра, сестры и т.д.)
         cur.execute("SELECT name, gender, age, sobriety, city, username, phone, program_info FROM sponsors WHERE gender ILIKE '%сестр%';")
         sponsors = cur.fetchall()
         cur.close()
