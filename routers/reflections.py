@@ -62,6 +62,13 @@ async def send_morning_prayer_to_channel(bot: Bot):
     except Exception as e:
         logging.error(f"Ошибка отправки молитвы: {e}")
 
+# Команда для проверки размышлений
+@router.message(F.text == "/test_send")
+async def test_send_reflection(message: types.Message, bot: Bot):
+    await send_daily_reflection_to_channel(bot)
+    await message.answer("Ежедневные размышления отправлены в канал.")
+
+# Команда для проверки молитвы
 @router.message(F.text == "/test_prayer")
 async def test_prayer(message: types.Message, bot: Bot):
     await send_morning_prayer_to_channel(bot)
