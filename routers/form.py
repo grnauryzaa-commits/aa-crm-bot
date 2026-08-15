@@ -11,7 +11,6 @@ router = Router()
 
 @router.message(F.text == "➕ Стать спонсором")
 async def start_form(message: Message, state: FSMContext):
-    # Защита: если человек уже в процессе заполнения или жмет повторно
     current_state = await state.get_state()
     if current_state is not None:
         await state.clear()
@@ -148,34 +147,39 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
 
 
 # ==========================================
-# ОБРАБОТЧИКИ КНОПОК ПРЯМО ЗДЕСЬ (ТОЧНО СРАБОТАЕТ)
+# ОБРАБОТЧИКИ КНОПОК АДМИНИСТРАТОРОВ
 # ==========================================
 
 @router.callback_query(F.data.startswith("approve_sp_"))
 async def approve_sponsor(callback: CallbackQuery, bot: Bot):
-    await callback.answer() # Защита от двойных нажатий
+    await callback.answer()
     target_user_id = int(callback.data.split("_")[2])
-    print(f"DEBUG: Нажата кнопка ОДОБРИТЬ для пользователя {target_user_id}")
     
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
         
+        # Проверяем, существует ли еще черновик (защита от повторного клика или конкуренции админов)
         cur.execute("SELECT name, gender, age, sobriety, city, username, phone, program_info FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
         draft = cur.fetchone()
         
-        if draft:
-            cur.execute("""
-                INSERT INTO sponsors (user_id, name, gender, age, sobriety, city, username, phone, program_info)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    name = EXCLUDED.name, gender = EXCLUDED.gender, age = EXCLUDED.age,
-                    sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, username = EXCLUDED.username,
-                    phone = EXCLUDED.phone, program_info = EXCLUDED.program_info;
-            """, (target_user_id, *draft))
-            
-            cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
-            conn.commit()
+        if not draft:
+            cur.close()
+            conn.close()
+            await callback.message.edit_text(f"{callback.message.text}\n\n⚠️ Эту анкету уже обработал другой администратор.", reply_markup=None)
+            return
+
+        cur.execute("""
+            INSERT INTO sponsors (user_id, name, gender, age, sobriety, city, username, phone, program_info)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                name = EXCLUDED.name, gender = EXCLUDED.gender, age = EXCLUDED.age,
+                sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, username = EXCLUDED.username,
+                phone = EXCLUDED.phone, program_info = EXCLUDED.program_info;
+        """, (target_user_id, *draft))
+        
+        cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
+        conn.commit()
             
         cur.close()
         conn.close()
@@ -193,13 +197,22 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("decline_sp_"))
 async def decline_sponsor(callback: CallbackQuery, bot: Bot):
-    await callback.answer() # Защита от двойных нажатий
+    await callback.answer()
     target_user_id = int(callback.data.split("_")[2])
-    print(f"DEBUG: Нажата кнопка ОТКЛОНИТЬ для пользователя {target_user_id}")
     
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
+        
+        cur.execute("SELECT user_id FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
+        draft = cur.fetchone()
+        
+        if not draft:
+            cur.close()
+            conn.close()
+            await callback.message.edit_text(f"{callback.message.text}\n\n⚠️ Эту анкету уже обработал другой администратор.", reply_markup=None)
+            return
+
         cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
         conn.commit()
         cur.close()
