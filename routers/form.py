@@ -54,7 +54,6 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     tg_id = message.from_user.id
     
-    # 1. Сохраняем черновик в базу данных
     import database as db
     await db.save_sponsor_draft(
         tg_id=tg_id,
@@ -68,7 +67,6 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
         program_info=data.get('program_info')
     )
 
-    # 2. Формируем карточку и инлайн-кнопки для админа
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="✅ Одобрить карточку", callback_data=f"approve_sp_{tg_id}"),
@@ -89,7 +87,6 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
         "━━━━━━━━━━━━━━━━━━"
     )
 
-    # 3. Отправляем всем админам из config.py
     for admin_id in ADMINS:
         try:
             await bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=keyboard, parse_mode="Markdown")
