@@ -17,8 +17,8 @@ from routers.help import router as help_router
 from routers.schedules import router as schedules_router
 from routers.reflections import router as reflections_router
 
-# Импорт функции рассылки
-from routers.reflections import send_daily_reflection_to_channel
+# Импорт функций рассылки (обе функции)
+from routers.reflections import send_daily_reflection_to_channel, send_morning_prayer_to_channel
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,9 +40,11 @@ async def main():
     )
 
     # 3. Настраиваем планировщик на время UTC
-    # 07:00 Алматы = 01:00 UTC
+    # 06:00 Алматы = 01:00 UTC
+    # 06:30 Алматы = 01:30 UTC
     scheduler = AsyncIOScheduler(timezone=utc)
     
+    # Ежедневные размышления в 06:00 Алматы
     scheduler.add_job(
         send_daily_reflection_to_channel, 
         trigger='cron', 
@@ -51,8 +53,17 @@ async def main():
         args=[bot]
     )
     
+    # Молитва 11 шага в 06:30 Алматы
+    scheduler.add_job(
+        send_morning_prayer_to_channel, 
+        trigger='cron', 
+        hour=1, 
+        minute=30, 
+        args=[bot]
+    )
+    
     scheduler.start()
-    logging.info("Планировщик рассылки запущен (время: 01:00 UTC, что соответствует 07:00 Алматы).")
+    logging.info("Планировщик запущен: 06:00 (размышления), 06:30 (молитва) по Алматы.")
 
     # 4. Запускаем бота
     await dp.start_polling(bot)
