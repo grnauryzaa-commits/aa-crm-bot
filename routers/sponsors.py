@@ -35,7 +35,8 @@ async def show_list_page(callback: CallbackQuery):
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    cur.execute(f"SELECT user_id, name FROM sponsors WHERE gender ILIKE '%{db_keyword}%' {gender_filter};")
+    # Запрашиваем имя, возраст, город и срок трезвости для кнопок
+    cur.execute(f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE gender ILIKE '%{db_keyword}%' {gender_filter};")
     all_sponsors = cur.fetchall()
     cur.close()
     conn.close()
@@ -51,8 +52,10 @@ async def show_list_page(callback: CallbackQuery):
     current_sponsors = all_sponsors[start_idx:end_idx]
 
     keyboard = []
-    for uid, name in current_sponsors:
-        keyboard.append([InlineKeyboardButton(text=name, callback_data=f"view_sp_{uid}_{list_type}_{page}")])
+    for uid, name, age, city, sobriety in current_sponsors:
+        # Информативная кнопка: Имя, Возраст | Город | Срок трезвости
+        button_text = f"{name}, {age} лет | {city or 'Город'} | {sobriety}"
+        keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"view_sp_{uid}_{list_type}_{page}")])
 
     nav_buttons = []
     if page > 0:
@@ -63,11 +66,10 @@ async def show_list_page(callback: CallbackQuery):
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    # Кнопка возврата к выбору категории (Братья / Сестры)
     keyboard.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="menu_sponsors")])
 
     await callback.message.edit_text(
-        f"📖 Список ({label}) — Страница {page + 1} из {total_pages}:\nНажми на имя для просмотра деталей:",
+        f"📖 Список ({label}) — Страница {page + 1} из {total_pages}:\nНажми на спонсора для просмотра деталей:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
 
