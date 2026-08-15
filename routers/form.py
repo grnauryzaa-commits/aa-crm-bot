@@ -1,10 +1,9 @@
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from routers.states import SponsorForm
 from routers.menu import get_main_menu_keyboard
-# Импортируем функцию отправки админу из admin.py
-from routers.admin import send_sponsor_request_to_admin
+from config import ADMINS
 
 router = Router()
 
@@ -53,11 +52,12 @@ async def process_program_info(message: Message, state: FSMContext):
 async def process_phone(message: Message, state: FSMContext, bot: Bot):
     await state.update_data(phone=message.text)
     data = await state.get_data()
+    tg_id = message.from_user.id
     
-    # Сохраняем черновик в базу данных, чтобы потом можно было одобрить
+    # 1. Сохраняем черновик в базу данных
     import database as db
     await db.save_sponsor_draft(
-        tg_id=message.from_user.id,
+        tg_id=tg_id,
         name=data.get('name'),
         gender=data.get('gender'),
         age=data.get('age'),
@@ -68,8 +68,33 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
         program_info=data.get('program_info')
     )
 
-    # Красивая отправка админу через функцию из admin.py
-    await send_sponsor_request_to_admin(bot, message.from_user.id, data)
+    # 2. Формируем карточку и инлайн-кнопки для админа
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Одобрить карточку", callback_data=f"approve_sp_{tg_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"decline_sp_{tg_id}")
+        ]
+    ])
+    
+    admin_text = (
+        "🔔 **ЗАЯВКА НА РЕГИСТРАЦИЮ СПОНСОРА**\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"👤 **Имя:** {data.get('name')} ({data.get('gender')})\n"
+        f"📅 **Возраст:** {data.get('age')}\n"
+        f"🕊 **Трезвость:** {data.get('sobriety')}\n"
+        f"📍 **Город:** {data.get('city')}\n\n"
+        f"📖 **Опыт/Программа:** {data.get('program_info')}\n"
+        f"✈️ **Telegram:** @{message.from_user.username or 'нет'}\n"
+        f"📞 **Телефон:** {data.get('phone')}\n"
+        "━━━━━━━━━━━━━━━━━━"
+    )
+
+    # 3. Отправляем всем админам из config.py
+    for admin_id in ADMINS:
+        try:
+            await bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception as e:
+            print(f"Не удалось отправить админу {admin_id}: {e}")
     
     await message.answer("✅ Твоя анкета успешно отправлена на модерацию администратору!", reply_markup=get_main_menu_keyboard())
     await state.clear()
