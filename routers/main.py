@@ -48,17 +48,18 @@ async def main():
         'max_instances': 3
     }
     
+    # Планировщик в зоне Алматы
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty", job_defaults=job_defaults)
     
-    # 06:00 по Алматы
+    # 06:00 по Алматы - Ежедневные размышления
     scheduler.add_job(safe_send_reflection, CronTrigger(hour=6, minute=0), args=[bot])
-    # 06:30 по Алматы (Утренний 11 шаг)
+    # 06:30 по Алматы - Утренний 11 шаг
     scheduler.add_job(safe_send_morning, CronTrigger(hour=6, minute=30), args=[bot])
-    # 01:00 ночи по Алматы (Временная проверка Вечернего 11 шага)
+    # 01:00 ночи по Алматы - Вечерний 11 шаг (Временная проверка)
     scheduler.add_job(safe_send_evening, CronTrigger(hour=1, minute=0), args=[bot])
     
     scheduler.start()
-    logging.info("Планировщик запущен в таймзоне Asia/Almaty (Вечерний 11 шаг временно переставлен на 01:00).")
+    logging.info("Планировщик запущен в таймзоне Asia/Almaty (Вечерний 11 шаг временно на 01:00).")
 
     await dp.start_polling(bot)
 
