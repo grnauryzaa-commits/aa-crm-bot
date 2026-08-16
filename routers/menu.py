@@ -58,7 +58,6 @@ async def show_daily_reflection(message: types.Message):
         logging.error(f"Ошибка получения размышлений для пользователя: {e}")
         await message.answer("Произошла ошибка при получении размышлений.")
 
-# Обработка кнопки "🙏 11 Шаг" (вызов инлайн-меню с молитвами)
 @router.message(F.text == "🙏 11 Шаг")
 async def step_eleven_menu(message: types.Message):
     keyboard = InlineKeyboardMarkup(
@@ -73,23 +72,11 @@ async def step_eleven_menu(message: types.Message):
         parse_mode="HTML"
     )
 
-# Обработка кнопки "➕ Стать спонсором"
-@router.message(F.text == "➕ Стать спонсором")
-async def become_sponsor_handler(message: types.Message):
-    await message.answer(
-        "➕ <b>Стать спонсором</b>\n\n"
-        "Спонсорство в АА — это передача своего опыта выздоровления другим.\n"
-        "Чтобы зарегистрироваться как спонсор, пожалуйста, укажи свои данные или свяжись с ответственным.",
-        parse_mode="HTML"
-    )
-
-# Обработка инлайн-кнопки утренней молитвы
 @router.callback_query(F.data == "get_morning_prayer")
 async def send_morning_callback(callback: types.CallbackQuery):
     await callback.message.answer(MORNING_PRAYER_TEXT, parse_mode="HTML")
     await callback.answer()
 
-# Обработка инлайн-кнопки вечерней молитвы
 @router.callback_query(F.data == "get_evening_prayer")
 async def send_evening_callback(callback: types.CallbackQuery):
     await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
