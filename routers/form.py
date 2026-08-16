@@ -10,14 +10,6 @@ router = Router()
 class EditSponsorState(StatesGroup):
     waiting_for_new_value = State()
 
-@router.message(F.text == "➕ Стать спонсором")
-async def become_sponsor_start(message: Message):
-    await message.answer(
-        "➕ <b>Регистрация в качестве спонсора</b>\n\n"
-        "Спонсорство в АА — это прекрасная возможность делиться даром выздоровления.",
-        parse_mode="HTML"
-    )
-
 @router.message(F.text == "🤝 Спонсоры")
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu(event: Message | CallbackQuery):
