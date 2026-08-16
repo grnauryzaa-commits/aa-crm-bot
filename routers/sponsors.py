@@ -88,15 +88,20 @@ async def show_details(callback: CallbackQuery):
     if sp:
         name, gender, age, sobriety, city, username, phone, program_info = sp
         
-        # Если username указан, формируем обычную ссылку, если нет — скрытую ссылку по ID
-        if username and username != "-":
+        if username and username != "-" and username != "нет":
             tg_contact = f"@{username}"
         else:
-            tg_contact = f"[Написать в личку](tg://user?id={user_id})"
+            tg_contact = f"ID: {user_id}"
 
-        text = (f"👤 **{name}** ({gender}), {age} лет\n🕊 Трезвость: {sobriety}\n"
-                f"📍 Город: {city}\n📖 Опыт: {program_info}\n"
-                f"✈️ Telegram: {tg_contact}\n📞 Телефон: {phone}")
+        # Обычный текст без Markdown разметки, стабилен к любым спецсимволам в анкетах
+        text = (
+            f"👤 Спонсор: {name} ({gender}), {age} лет\n"
+            f"🕊 Трезвость: {sobriety}\n"
+            f"📍 Город: {city}\n"
+            f"📖 Опыт: {program_info}\n"
+            f"✈️ Telegram: {tg_contact}\n"
+            f"📞 Телефон: {phone}"
+        )
         
         keyboard = [
             [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"list_{list_type}_{page}")]
@@ -106,8 +111,9 @@ async def show_details(callback: CallbackQuery):
         if current_user_id == int(user_id) or current_user_id in ADMINS:
             keyboard.insert(0, [InlineKeyboardButton(text="✏️ Редактировать анкету", callback_data=f"edit_menu_{user_id}_{list_type}_{page}")])
 
-        # Используем parse_mode="Markdown", чтобы ссылки корректно работали
-        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    else:
+        await callback.answer("⚠️ Спонсор не найден в базе данных.", show_alert=True)
 
 @router.callback_query(F.data.startswith("edit_menu_"))
 async def edit_menu(callback: CallbackQuery):
