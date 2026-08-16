@@ -73,6 +73,16 @@ async def step_eleven_menu(message: types.Message):
         parse_mode="HTML"
     )
 
+# Обработка кнопки "➕ Стать спонсором"
+@router.message(F.text == "➕ Стать спонсором")
+async def become_sponsor_handler(message: types.Message):
+    await message.answer(
+        "➕ <b>Стать спонсором</b>\n\n"
+        "Спонсорство в АА — это передача своего опыта выздоровления другим.\n"
+        "Чтобы зарегистрироваться как спонсор, пожалуйста, укажи свои данные или свяжись с ответственным.",
+        parse_mode="HTML"
+    )
+
 # Обработка инлайн-кнопки утренней молитвы
 @router.callback_query(F.data == "get_morning_prayer")
 async def send_morning_callback(callback: types.CallbackQuery):
