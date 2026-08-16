@@ -10,6 +10,14 @@ router = Router()
 class EditSponsorState(StatesGroup):
     waiting_for_new_value = State()
 
+@router.message(F.text == "➕ Стать спонсором")
+async def become_sponsor_start(message: Message):
+    await message.answer(
+        "➕ <b>Регистрация в качестве спонсора</b>\n\n"
+        "Спонсорство в АА — это прекрасная возможность делиться даром выздоровления.",
+        parse_mode="HTML"
+    )
+
 @router.message(F.text == "🤝 Спонсоры")
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu(event: Message | CallbackQuery):
@@ -91,16 +99,11 @@ async def show_details(callback: CallbackQuery):
         if username and username != "-":
             tg_contact = f"@{username}"
         else:
-            tg_contact = f"id{user_id}"
+            tg_contact = f"[Написать в личку](tg://user?id={user_id})"
 
-        text = (
-            f"👤 Спонсор: {name} ({gender}), {age} лет\n"
-            f"🕊 Трезвость: {sobriety}\n"
-            f"📍 Город: {city}\n"
-            f"📖 Опыт: {program_info}\n"
-            f"✈️ Telegram: {tg_contact}\n"
-            f"📞 Телефон: {phone}"
-        )
+        text = (f"👤 **{name}** ({gender}), {age} лет\n🕊 Трезвость: {sobriety}\n"
+                f"📍 Город: {city}\n📖 Опыт: {program_info}\n"
+                f"✈️ Telegram: {tg_contact}\n📞 Телефон: {phone}")
         
         keyboard = [
             [InlineKeyboardButton(text="⬅️ Назад", callback_data=f"list_{list_type}_{page}")]
@@ -110,7 +113,7 @@ async def show_details(callback: CallbackQuery):
         if current_user_id == int(user_id) or current_user_id in ADMINS:
             keyboard.insert(0, [InlineKeyboardButton(text="✏️ Редактировать анкету", callback_data=f"edit_menu_{user_id}_{list_type}_{page}")])
 
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+        await callback.message.edit_text(text, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
 @router.callback_query(F.data.startswith("edit_menu_"))
 async def edit_menu(callback: CallbackQuery):
