@@ -21,26 +21,44 @@ from routers.reflections import (
 
 logging.basicConfig(level=logging.INFO)
 
+async def safe_send_reflection(bot):
+    try:
+        await send_daily_reflection_to_channel(bot)
+    except Exception as e:
+        logging.error(f"❌ Ошибка в рассылке ежедневных размышлений: {e}")
+
+async def safe_send_morning(bot):
+    try:
+        await send_morning_prayer_to_channel(bot)
+    except Exception as e:
+        logging.error(f"❌ Ошибка в рассылке утреннего 11 шага: {e}")
+
+async def safe_send_evening(bot):
+    try:
+        await send_evening_prayer_to_channel(bot)
+    except Exception as e:
+        logging.error(f"❌ Ошибка в рассылке вечернего 11 шага: {e}")
+
 async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     dp.include_routers(start_router, menu_router, form_router, sponsors_router, admin_router, help_router, schedules_router, reflections_router)
 
-    # Настраиваем планировщик с разрешением параллельных запусков (max_instances)
     job_defaults = {
         'max_instances': 3
     }
-    scheduler = AsyncIOScheduler(timezone="UTC", job_defaults=job_defaults)
     
-    # 06:00 Алматы = 01:00 UTC
-    scheduler.add_job(send_daily_reflection_to_channel, CronTrigger(hour=1, minute=0), args=[bot])
-    # 06:30 Алматы = 01:30 UTC
-    scheduler.add_job(send_morning_prayer_to_channel, CronTrigger(hour=1, minute=30), args=[bot])
-    # 23:00 Алматы = 18:00 UTC
-    scheduler.add_job(send_evening_prayer_to_channel, CronTrigger(hour=18, minute=0), args=[bot])
+    scheduler = AsyncIOScheduler(timezone="Asia/Almaty", job_defaults=job_defaults)
+    
+    # 06:00 по Алматы
+    scheduler.add_job(safe_send_reflection, CronTrigger(hour=6, minute=0), args=[bot])
+    # 06:30 по Алматы (Утренний 11 шаг)
+    scheduler.add_job(safe_send_morning, CronTrigger(hour=6, minute=30), args=[bot])
+    # 01:00 ночи по Алматы (Временная проверка Вечернего 11 шага)
+    scheduler.add_job(safe_send_evening, CronTrigger(hour=1, minute=0), args=[bot])
     
     scheduler.start()
-    logging.info("Планировщик запущен с поддержкой параллельных задач (06:00, 06:30, 23:00 по Алматы).")
+    logging.info("Планировщик запущен в таймзоне Asia/Almaty (Вечерний 11 шаг временно переставлен на 01:00).")
 
     await dp.start_polling(bot)
 
