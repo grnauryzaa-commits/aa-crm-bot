@@ -31,19 +31,15 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
     
-    # 06:00 Ежедневные размышления
+    # 06:00 - Ежедневные размышления
     scheduler.add_job(send_daily_reflection_to_channel, CronTrigger(hour=6, minute=0), args=[bot])
-    # 06:30 Утренний 11 шаг
+    # 06:30 - Утренний 11 шаг
     scheduler.add_job(send_morning_prayer_to_channel, CronTrigger(hour=6, minute=30), args=[bot])
-    # ТЕСТОВАЯ ЗАДАЧА: 01:00 Вечерний 11 шаг
-    scheduler.add_job(send_evening_prayer_to_channel, CronTrigger(hour=1, minute=0), args=[bot])
+    # 23:00 - Вечерний 11 шаг
+    scheduler.add_job(send_evening_prayer_to_channel, CronTrigger(hour=23, minute=0), args=[bot])
     
     scheduler.start()
-    logging.info("Планировщик запущен в таймзоне Asia/Almaty.")
-
-    # Логируем все задачи, чтобы видеть в консоли Railway, что они активны
-    for job in scheduler.get_jobs():
-        logging.info(f"Активная задача: {job.func.__name__} срабатывает по: {job.trigger}")
+    logging.info("Планировщик запущен в таймзоне Asia/Almaty (Расписание обновлено).")
 
     await dp.start_polling(bot)
 
