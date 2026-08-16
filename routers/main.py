@@ -55,11 +55,11 @@ async def main():
     scheduler.add_job(safe_send_reflection, CronTrigger(hour=6, minute=0), args=[bot])
     # 06:30 по Алматы - Утренний 11 шаг
     scheduler.add_job(safe_send_morning, CronTrigger(hour=6, minute=30), args=[bot])
-    # 01:00 ночи по Алматы - Вечерний 11 шаг (Временная проверка)
-    scheduler.add_job(safe_send_evening, CronTrigger(hour=1, minute=0), args=[bot])
+    # 00:40 по Алматы - Вечерний 11 шаг (Тест на ближайшее время)
+    scheduler.add_job(safe_send_evening, CronTrigger(hour=0, minute=40), args=[bot])
     
     scheduler.start()
-    logging.info("Планировщик запущен в таймзоне Asia/Almaty (Вечерний 11 шаг временно на 01:00).")
+    logging.info("Планировщик запущен в таймзоне Asia/Almaty (Вечерний 11 шаг настроен на 00:40 для теста).")
 
     await dp.start_polling(bot)
 
