@@ -1,5 +1,6 @@
 from aiogram import Router, F, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command
 import psycopg2
 from datetime import datetime
 import html
@@ -18,7 +19,8 @@ def get_main_menu_keyboard():
             [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="📅 Расписание")],
             [KeyboardButton(text="❓ Помощь")]
         ],
-        resize_keyboard=True
+        resize_keyboard=True,
+        input_field_placeholder="Выберите нужный раздел внизу 👇"
     )
 
 def format_reflection_text(text, today):
@@ -39,6 +41,17 @@ def format_reflection_text(text, today):
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
 
+# Добавили обработчик команды /start прямо здесь или для подстраховки меню, 
+# чтобы клавиатура прикреплялась сразу при старте, если это нужно:
+@router.message(Command("start"))
+async def cmd_start(message: types.Message):
+    await message.answer(
+        "Приветствую! Добро пожаловать в бот сообщества Анонимных Алкоголиков.\n\n"
+        "👇 <b>Главное меню всегда находится внизу экрана.</b> Нажимайте на нужные кнопки:",
+        reply_markup=get_main_menu_keyboard(),
+        parse_mode="HTML"
+    )
+
 @router.message(F.text == "📖 Ежедневные размышления")
 async def show_daily_reflection(message: types.Message):
     today = datetime.now()
@@ -51,12 +64,13 @@ async def show_daily_reflection(message: types.Message):
         conn.close()
         if row:
             text = format_reflection_text(row[0], today)
-            await message.answer(text, parse_mode="HTML")
+            # Передаем reply_markup=get_main_menu_keyboard(), чтобы клавиатура не пропадала при ответе
+            await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu_keyboard())
         else:
-            await message.answer("На сегодня размышления не найдены в базе.")
+            await message.answer("На сегодня размышления не найдены в базе.", reply_markup=get_main_menu_keyboard())
     except Exception as e:
         logging.error(f"Ошибка получения размышлений для пользователя: {e}")
-        await message.answer("Произошла ошибка при получении размышлений.")
+        await message.answer("Произошла ошибка при получении размышлений.", reply_markup=get_main_menu_keyboard())
 
 @router.message(F.text == "🙏 11 Шаг")
 async def step_eleven_menu(message: types.Message):
