@@ -6,7 +6,7 @@ from datetime import datetime
 import html
 import logging
 from routers.reflections import MORNING_PRAYER_TEXT, EVENING_PRAYER_TEXT
-from routers.ai_helper import ask_ai_for_beginner
+from .ai_helper import ask_ai_for_beginner
 
 router = Router()
 
@@ -95,7 +95,6 @@ async def send_evening_callback(callback: types.CallbackQuery):
     await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
     await callback.answer()
 
-# Обработчик кнопки "Стать спонсором" с кнопкой "Назад"
 @router.message(F.text == "➕ Стать спонсором")
 async def become_sponsors_menu(message: types.Message):
     keyboard = InlineKeyboardMarkup(
@@ -113,11 +112,9 @@ async def become_sponsors_menu(message: types.Message):
 
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu_callback(callback: types.CallbackQuery):
-    # Удаляем сообщение с текстом раздела, чтобы не засорять чат
     await callback.message.delete()
     await callback.answer("Возврат в меню")
 
-# Обработчик вызова живого служащего
 @router.callback_query(F.data == "call_servant")
 async def call_servant_callback(callback: types.CallbackQuery):
     await callback.message.answer(
@@ -126,7 +123,6 @@ async def call_servant_callback(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-# Обработчик всех остальных текстовых сообщений (вопросы к ИИ)
 @router.message(F.text)
 async def handle_beginner_questions(message: types.Message):
     menu_buttons = [
