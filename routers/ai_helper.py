@@ -1,6 +1,7 @@
 import os
 from groq import Groq
 
+# Инициализация официального клиента Groq (без OpenAI-прокси)
 client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 async def ask_ai_for_beginner(user_message: str) -> str:
