@@ -26,7 +26,6 @@ async def ask_ai_for_beginner(user_message: str) -> str:
         "напомни, что он сегодня не один, и предложи мягко обратиться к живому дежурному служащему через кнопку в боте."
     )
 
-    # Используем актуальную и стабильную модель
     payload = {
         "model": "openai/gpt-oss-20b",
         "messages": [
@@ -42,11 +41,15 @@ async def ask_ai_for_beginner(user_message: str) -> str:
             async with session.post(url, headers=headers, json=payload) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data["choices"][0]["message"]["content"]
-                else:
-                    response_text = await response.text()
-                    print(f"Groq API Error [{response.status}]: {response_text}")
-                    return "Связь на мгновение прервалась, но помни: ты сегодня не один. Сделай паузу, выдохни и попробуй написать мне еще раз."
+                    # Безопасно извлекаем текст ответа
+                    choices = data.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content")
+                        if content:
+                            return str(content).strip()
+                
+                # Если статус не 200 или пустой ответ
+                return "Связь на мгновение прервалась, но помни: ты сегодня не один. Сделай паузу и попробуй написать мне еще раз."
     except Exception as e:
         print(f"Exception during request: {e}")
         return "Произошел небольшой технический сбой. Главное — оставайся трезвым в этот момент, мы справимся с тягой вместе."
