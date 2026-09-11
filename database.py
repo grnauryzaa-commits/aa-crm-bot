@@ -1,13 +1,14 @@
 import psycopg2
 import logging
 import asyncio
+import aiosqlite # Убедись, что aiosqlite установлен в requirements.txt
 from config import DATABASE_URL as DB_URL
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
 async def init_db():
-    logging.info("🚀 Запуск принудительного обновления структуры базы данных (добавление пола)...")
+    logging.info("🚀 Запуск принудительного обновления структуры базы данных (добавление пола и истории диалогов)...")
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -58,10 +59,15 @@ async def init_db():
                 PRIMARY KEY (day, month)
             );
         """)
-        
+
         conn.commit()
         cur.close()
         conn.close()
+
+        # 4. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ИСТОРИИ ДИАЛОГОВ (ЧЕРЕЗ aiosqlite или async psycopg2)
+        # Так как проект использует async/await, инициализируем табличку диалогов через aiosqlite (или локальный файл БД истории)
+        await init_history_db()
+
         logging.info("🎉 СТРУКТУРА БАЗЫ ДАННЫХ ИСПРАВЛЕНА И ГОТОВА К РАБОТЕ!")
         
     except Exception as e:
@@ -70,7 +76,7 @@ async def init_db():
 
 
 # =====================================================================
-# ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ С БАЗОЙ ДАННЫХ
+# ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ С БАЗОЙ ДАННЫХ (СПОНСОРЫ И ЧЕРНОВИКИ)
 # =====================================================================
 
 def _get_sponsor_sync(user_id):
@@ -124,3 +130,42 @@ def _save_draft_sync(user_id, data):
 async def save_sponsor_draft(user_id, data):
     """Сохраняет заполненную анкету пользователя в таблицу черновиков"""
     await asyncio.to_thread(_save_draft_sync, user_id, data)
+
+
+# =====================================================================
+# ФУНКЦИИ ИСТОРИИ ДИАЛОГОВ (ДЛЯ КОНТЕКСТА ИИ)
+# =====================================================================
+
+async def init_history_db():
+    """Создает локальную таблицу истории чата для сохранения контекста беседы с ИИ"""
+    async with aiosqlite.connect("sponsors.db") as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS dialog_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id BIGINT,
+                role TEXT,
+                content TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.commit()
+
+async def add_message_to_history(user_id: int, role: str, content: str):
+    """Записывает реплику пользователя или бота в историю диалога"""
+    async with aiosqlite.connect("sponsors.db") as db:
+        await db.execute(
+            "INSERT INTO dialog_history (user_id, role, content) VALUES (?, ?, ?)",
+            (user_id, role, content)
+        )
+        await db.commit()
+
+async def get_recent_history(user_id: int, limit: int = 6) -> list:
+    """Достает последние сообщения пользователя для сохранения логической цепочки"""
+    async with aiosqlite.connect("sponsors.db") as db:
+        async with db.execute(
+            "SELECT role, content FROM dialog_history WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+            (user_id, limit)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            # Возвращаем в хронологическом порядке (от старых к новым)
+            return [{"role": row[0], "content": row[1]} for row in reversed(rows)]

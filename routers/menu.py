@@ -134,7 +134,9 @@ async def handle_beginner_questions(message: types.Message):
         return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    ai_response = await ask_ai_for_beginner(message.text)
+    
+    # Передаем user_id для привязки к памяти диалога
+    ai_response = await ask_ai_for_beginner(message.from_user.id, message.text)
 
     servant_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[

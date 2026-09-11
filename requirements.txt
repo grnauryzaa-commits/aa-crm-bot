@@ -5,3 +5,4 @@ aiohttp==3.10.5
 apscheduler==3.10.4
 tzdata
 groq
+aiosqlite
