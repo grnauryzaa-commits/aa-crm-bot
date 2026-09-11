@@ -6,6 +6,7 @@ from datetime import datetime
 import html
 import logging
 from routers.reflections import MORNING_PRAYER_TEXT, EVENING_PRAYER_TEXT
+from routers.ai_helper import ask_ai_for_beginner
 
 router = Router()
 
@@ -41,12 +42,11 @@ def format_reflection_text(text, today):
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
 
-# Добавили обработчик команды /start прямо здесь или для подстраховки меню, 
-# чтобы клавиатура прикреплялась сразу при старте, если это нужно:
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     await message.answer(
         "Приветствую! Добро пожаловать в бот сообщества Анонимных Алкоголиков.\n\n"
+        "🤖 Вы можете задать мне любой вопрос о программе АА своими словами, и я постараюсь помочь.\n\n"
         "👇 <b>Главное меню всегда находится внизу экрана.</b> Нажимайте на нужные кнопки:",
         reply_markup=get_main_menu_keyboard(),
         parse_mode="HTML"
@@ -64,7 +64,6 @@ async def show_daily_reflection(message: types.Message):
         conn.close()
         if row:
             text = format_reflection_text(row[0], today)
-            # Передаем reply_markup=get_main_menu_keyboard(), чтобы клавиатура не пропадала при ответе
             await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu_keyboard())
         else:
             await message.answer("На сегодня размышления не найдены в базе.", reply_markup=get_main_menu_keyboard())
@@ -95,3 +94,60 @@ async def send_morning_callback(callback: types.CallbackQuery):
 async def send_evening_callback(callback: types.CallbackQuery):
     await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
     await callback.answer()
+
+# Обработчик кнопки "Стать спонсором" с кнопкой "Назад"
+@router.message(F.text == "➕ Стать спонсором")
+async def become_sponsors_menu(message: types.Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_menu")]
+        ]
+    )
+    await message.answer(
+        "➕ <b>Стать спонсором в АА</b>\n\n"
+        "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими. "
+        "Если вы чувствуете в себе силы и имеете устойчивую трезвость, вы можете зарегистрироваться как спонсор.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.callback_query(F.data == "back_to_menu")
+async def back_to_menu_callback(callback: types.CallbackQuery):
+    # Удаляем сообщение с текстом раздела, чтобы не засорять чат
+    await callback.message.delete()
+    await callback.answer("Возврат в меню")
+
+# Обработчик вызова живого служащего
+@router.callback_query(F.data == "call_servant")
+async def call_servant_callback(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "🙏 Ваша заявка принята. Дежурный служащий сообщества свяжется с вами в ближайшее время.\n\n"
+        "Также вы всегда можете обратиться к разделу «Расписание» или на живые группы."
+    )
+    await callback.answer()
+
+# Обработчик всех остальных текстовых сообщений (вопросы к ИИ)
+@router.message(F.text)
+async def handle_beginner_questions(message: types.Message):
+    menu_buttons = [
+        "📖 Ежедневные размышления", "🙏 11 Шаг", 
+        "➕ Стать спонсором", "🤝 Спонсоры", 
+        "📅 Расписание", "❓ Помощь"
+    ]
+    if message.text in menu_buttons:
+        return
+
+    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
+    ai_response = await ask_ai_for_beginner(message.text)
+
+    servant_keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
+        ]
+    )
+
+    await message.answer(
+        ai_response, 
+        parse_mode="Markdown", 
+        reply_markup=servant_keyboard
+    )
