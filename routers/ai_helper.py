@@ -26,31 +26,27 @@ async def ask_ai_for_beginner(user_message: str) -> str:
         "напомни, что он сегодня не один, и предложи мягко обратиться к живому дежурному служащему через кнопку в боте."
     )
 
-    # Список моделей на случай, если первая будет недоступна для ключа
-    models_to_try = ["llama-3.1-8b-instant", "llama-3.2-3b-preview"]
+    # Используем актуальную и стабильную модель
+    payload = {
+        "model": "openai/gpt-oss-20b",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 300
+    }
 
-    async with aiohttp.ClientSession() as session:
-        for model_name in models_to_try:
-            payload = {
-                "model": model_name,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 300
-            }
-
-            try:
-                async with session.post(url, headers=headers, json=payload) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return data["choices"][0]["message"]["content"]
-                    else:
-                        response_text = await response.text()
-                        print(f"Model {model_name} failed with status {response.status}: {response_text}")
-            except Exception as e:
-                print(f"Exception with model {model_name}: {e}")
-
-    # Если вообще все модели недоступны
-    return "Связь с миром временно нарушена, но помни: ты сегодня не один. Сделай паузу, выдохни и попробуй написать мне еще раз."
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    response_text = await response.text()
+                    print(f"Groq API Error [{response.status}]: {response_text}")
+                    return "Связь на мгновение прервалась, но помни: ты сегодня не один. Сделай паузу, выдохни и попробуй написать мне еще раз."
+    except Exception as e:
+        print(f"Exception during request: {e}")
+        return "Произошел небольшой технический сбой. Главное — оставайся трезвым в этот момент, мы справимся с тягой вместе."
