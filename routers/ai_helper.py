@@ -4,7 +4,7 @@ import aiohttp
 async def ask_ai_for_beginner(user_message: str) -> str:
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
-        return "Извините, сервис временно недоступен."
+        return "Алкоголь умеет нас изолировать, но сейчас ты можешь сделать вдох и обратиться к живому другу по программе."
 
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {
@@ -40,9 +40,9 @@ async def ask_ai_for_beginner(user_message: str) -> str:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers, json=payload) as response:
                 if response.status != 200:
-                    return "Жаль, но сейчас у меня не получается ответить. Попробуй написать чуть позже, ты не один."
+                    return "Связь на мгновение прервалась, но помни: ты сегодня не один. Сделай паузу, выдохни и попробуй написать мне еще раз."
                 
                 data = await response.json()
                 return data["choices"][0]["message"]["content"]
     except Exception:
-        return "Произошла небольшая техническая ошибка. Главное — оставайся трезвым в этот момент, попробуй написать еще раз."
+        return "Произошел небольшой технический сбой. Главное — оставайся трезвым в этот момент, мы справимся с тягой вместе."
