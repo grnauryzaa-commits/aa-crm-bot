@@ -1,11 +1,8 @@
 import os
-from openai import OpenAI
+from groq import Groq
 
-# Инициализация клиента Groq (использует OpenAI-совместимый интерфейс)
-client = OpenAI(
-    base_url="https://api.groq.com/openai/v1",
-    api_key=os.environ.get("GROQ_API_KEY")
-)
+# Инициализация официального клиента Groq
+client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 async def ask_ai_for_beginner(user_message: str) -> str:
     system_prompt = (
@@ -21,7 +18,7 @@ async def ask_ai_for_beginner(user_message: str) -> str:
 
     try:
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",  # Бесплатная, мощная и быстрая модель на Groq
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
