@@ -39,10 +39,14 @@ async def ask_ai_for_beginner(user_message: str) -> str:
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, headers=headers, json=payload) as response:
+                response_text = await response.text()
                 if response.status != 200:
-                    return "Связь на мгновение прервалась, но помни: ты сегодня не один. Сделай паузу, выдохни и попробуй написать мне еще раз."
+                    # Выводим реальный ответ от Groq в консоль Railway для диагностики
+                    print(f"GROQ ERROR DETAILS [{response.status}]: {response_text}")
+                    return f"Связь на мгновение прервалась ({response.status}). Выдохни, ты не один, попробуй еще раз."
                 
                 data = await response.json()
                 return data["choices"][0]["message"]["content"]
-    except Exception:
+    except Exception as e:
+        print(f"EXCEPTION: {e}")
         return "Произошел небольшой технический сбой. Главное — оставайся трезвым в этот момент, мы справимся с тягой вместе."
