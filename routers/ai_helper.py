@@ -24,7 +24,7 @@ async def ask_ai_for_beginner(user_message: str) -> str:
     )
 
     payload = {
-        "model": "llama-3.3-70b-versatile",
+        "model": "llama-3.1-8b-instant",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message}
