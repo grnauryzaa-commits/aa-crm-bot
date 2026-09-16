@@ -139,6 +139,7 @@ def get_schedule_menu_kb():
         [InlineKeyboardButton(text="📍 Алматы: Жубанова 3а", callback_data="s_zhub")],
         [InlineKeyboardButton(text="📍 Алматы: Зенкова 24", callback_data="s_zenk")],
         [InlineKeyboardButton(text="📍 Алматы: Тимирязева 42", callback_data="s_tim")],
+        [InlineKeyboardButton(text="📍 Каскелен: Нур-Жанат", callback_data="s_kaskelen")],
         [InlineKeyboardButton(text="📍 Другие локации", callback_data="s_other")]
     ])
 
@@ -182,6 +183,13 @@ async def callback_schedule(callback: types.CallbackQuery):
         text = ("🏢 <b>Тимирязева 42, корпус 23, каб 102</b>\n\n"
                 "• <b>Друзья Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00" + help_text)
         kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047374971407/76.904347,43.217837")],
+              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+
+    elif data == "s_kaskelen":
+        text = ("🏢 <b>ТД «Нур-Жанат» (г. Каскелен)</b>\n\n"
+                "• <b>Группа «Туран»</b>: Пн, Ср, Сб 17:00–18:15" + help_text)
+        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/70030076201734271/76.642795,43.201247")],
               [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
