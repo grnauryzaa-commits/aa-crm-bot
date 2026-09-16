@@ -89,14 +89,23 @@ async def show_reflection(message: Message):
         row = cur.fetchone()
         cur.close()
         conn.close()
-        if row:
-            lines = [l.strip() for l in row[0].split('\n') if l.strip() and not any(f in l for f in ["WWW.MOS-NACH.RU", "Анонимные Алкоголики."])]
-            await message.answer(f"📖 <b>Ежедневные размышления</b>\n\n{html.escape('\n\n'.join(lines))}", parse_mode="HTML", reply_markup=get_main_menu_keyboard())
+        
+        if row and row[0]:
+            raw_text = str(row[0])
+            lines = [line.strip() for line in raw_text.split('\n') if line and line.strip()]
+            filtered = [l for l in lines if "WWW.MOS-NACH.RU" not in l and "Анонимные Алкоголики" not in l]
+            body = "\n\n".join(filtered) if filtered else raw_text
+            
+            safe_text = f"📖 <b>Ежедневные размышления АА</b>\n\n{html.escape(body)}"
+            if len(safe_text) > 4000:
+                safe_text = safe_text[:4000] + "...\n\n(текст слишком длинный)"
+
+            await message.answer(safe_text, parse_mode="HTML", reply_markup=get_main_menu_keyboard())
         else:
             await message.answer("На сегодня размышления не найдены.", reply_markup=get_main_menu_keyboard())
     except Exception as e:
         logging.error(f"Reflection error: {e}")
-        await message.answer("Ошибка при загрузке размышлений.")
+        await message.answer("Произошла ошибка при загрузке размышлений.", reply_markup=get_main_menu_keyboard())
 
 @router.message(F.text == "🙏 11 Шаг")
 async def step_eleven(message: Message):
@@ -119,7 +128,8 @@ async def become_sponsor(message: Message):
 
 @router.callback_query(F.data == "start_sponsor_registration")
 async def reg_sponsor(callback: CallbackQuery, state: FSMContext):
-    await callback.message.delete()
+    try: await callback.message.delete()
+    except: pass
     await callback.message.answer("📝 Введите ваше имя:", parse_mode="HTML")
     await state.set_state(SponsorForm.waiting_for_name)
     await callback.answer()
@@ -135,11 +145,8 @@ async def sponsors_menu(event: Message | CallbackQuery):
         await event.answer("👥 Выберите список:", reply_markup=kb)
     else:
         await event.message.edit_text("👥 Выберите список:", reply_markup=kb)
-        await callback_answer_safe(event)
-
-async def callback_answer_safe(cb):
-    try: await cb.answer()
-    except: pass
+        try: await event.answer()
+        except: pass
 
 @router.callback_query(F.data.startswith(("list_brothers_", "list_sisters_")))
 async def show_list_page(callback: CallbackQuery):
