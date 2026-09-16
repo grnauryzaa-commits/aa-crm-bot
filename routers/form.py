@@ -1,15 +1,24 @@
 import traceback
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton
 from routers.states import SponsorForm
-from routers.menu import get_main_menu_keyboard
 from config import ADMINS, DATABASE_URL
 import database as db
 import psycopg2
 import html
 
 router = Router()
+
+# Функция для главного меню на случай возврата, чтобы не было циклического импорта
+def get_fallback_menu_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="➕ Стать спонсором"), KeyboardButton(text="📋 Список спонсоров")],
+            [KeyboardButton(text="🏠 Главное меню")]
+        ],
+        resize_keyboard=True
+    )
 
 # ==========================================
 # ШАГИ РЕГИСТРАЦИИ СПОНСОРА ЧЕРЕЗ FSM
@@ -136,7 +145,7 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
         except Exception as e:
             print(f"Не удалось отправить админу {admin_id}: {e}")
     
-    await message.answer("✅ Твоя анкета успешно отправлена на модерацию администратору!", reply_markup=get_main_menu_keyboard())
+    await message.answer("✅ Твоя анкета успешно отправлена на модерацию администратору!", reply_markup=get_fallback_menu_keyboard())
     await state.clear()
 
 
