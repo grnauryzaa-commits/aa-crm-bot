@@ -3,7 +3,6 @@ from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from routers.states import SponsorForm
-from routers.menu import get_main_menu_keyboard
 from config import ADMINS, DATABASE_URL
 import database as db
 import psycopg2
@@ -136,7 +135,7 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
         except Exception as e:
             print(f"Не удалось отправить админу {admin_id}: {e}")
     
-    await message.answer("✅ Твоя анкета успешно отправлена на модерацию администратору!", reply_markup=get_main_menu_keyboard())
+    await message.answer("✅ Твоя анкета успешно отправлена на модерацию администратору!", reply_markup=ReplyKeyboardRemove())
     await state.clear()
 
 
