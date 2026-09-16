@@ -14,10 +14,19 @@ router = Router()
 # ШАГИ РЕГИСТРАЦИИ СПОНСОРА ЧЕРЕЗ FSM
 # ==========================================
 
+# 1. Запуск по текстовой кнопке из главного меню
 @router.message(F.text == "➕ Стать спонсором")
-async def start_form(message: Message, state: FSMContext):
+async def start_form_text(message: Message, state: FSMContext):
     await message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
     await state.set_state(SponsorForm.name)
+
+# 2. Запуск по инлайн-кнопке "Заполнить анкету спонсора" из подменю
+@router.callback_query(F.data == "start_sponsor_registration")
+async def start_form_callback(callback: CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    await callback.message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(SponsorForm.name)
+    await callback.answer()
 
 @router.message(SponsorForm.name)
 async def process_name(message: Message, state: FSMContext):
