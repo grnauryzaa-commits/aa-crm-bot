@@ -44,11 +44,22 @@ def format_reflection_text(text, today):
     return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
 
 @router.message(Command("start"))
-async def cmd_start(message: types.Message):
+async def cmd_start(message: types.Message, state: FSMContext):
+    await state.clear()
     await message.answer(
         "Приветствую! Добро пожаловать в бот сообщества Анонимных Алкоголиков.\n\n"
         "🤖 Вы можете задать мне любой вопрос о программе АА своими словами, и я постараюсь помочь.\n\n"
         "👇 <b>Главное меню всегда находится внизу экрана.</b> Нажимайте на нужные кнопки:",
+        reply_markup=get_main_menu_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.message(F.text == "🏠 Главное меню")
+async def cmd_main_menu(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "🏠 <b>Главное меню</b>\n\n"
+        "Выберите нужный раздел внизу 👇",
         reply_markup=get_main_menu_keyboard(),
         parse_mode="HTML"
     )
@@ -130,7 +141,7 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
     menu_buttons = [
         "📖 Ежедневные размышления", "🙏 11 Шаг", 
         "➕ Стать спонсором", "🤝 Спонсоры", 
-        "📅 Расписание", "❓ Помощь"
+        "📅 Расписание", "❓ Помощь", "🏠 Главное меню"
     ]
     if message.text in menu_buttons:
         return
