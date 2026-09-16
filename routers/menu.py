@@ -120,8 +120,18 @@ async def become_sponsors_menu(message: types.Message):
         parse_mode="HTML"
     )
 
-# Кнопка "🤝 Спонсоры" и вся логика спонсоров теперь находятся в sponsors.py, 
-# но если здесь требуется прокинуть перенаправление на callback, оно обрабатывается там же.
+@router.message(F.text == "🤝 Спонсоры")
+@router.callback_query(F.data == "menu_sponsors")
+async def sponsors_menu_handler(event: Message | CallbackQuery):
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers_0")],
+        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")]
+    ])
+    if isinstance(event, Message):
+        await event.answer("👥 Выберите список:", reply_markup=keyboard)
+    else:
+        await event.message.edit_text("👥 Выберите список:", reply_markup=keyboard)
+        await event.answer()
 
 def get_schedule_menu_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
