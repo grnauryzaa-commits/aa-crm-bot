@@ -131,41 +131,60 @@ async def sponsors_section_handler(message: types.Message):
         ]
     )
     await message.answer(
-        "🤝 <b>Раздел спонсоров АА</b>\n\n"
-        "Вы можете посмотреть актуальный список доступных спонсоров из базы данных или подать собственную анкету.",
+        "🤝 <b>База данных спонсоров АА</b>\n\n"
+        "Здесь вы можете посмотреть список всех доступных спонсоров из базы данных или подать заявку на регистрацию:",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
 
 @router.message(F.text == "📅 Расписание")
 async def schedule_section_handler(message: types.Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Открыть сайт расписания", url="https://aaorg.kz")],
+            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_menu")]
+        ]
+    )
     await message.answer(
-        "📅 <b>Расписание собраний АА</b>\n\n"
-        "Актуальное расписание онлайн и оффлайн групп сообщества:\n"
-        "• Ежедневные онлайн-собрания проводятся в Zoom/Telegram.\n"
-        "• Официальный сайт расписания: <a href=\"https://aaorg.kz\">aaorg.kz</a>",
-        reply_markup=get_main_menu_keyboard(),
-        parse_mode="HTML",
-        disable_web_page_preview=True
+        "📅 <b>Расписание групп АА</b>\n\n"
+        "Выберите нужное действие или перейдите на официальный сайт расписания сообщества:",
+        reply_markup=keyboard,
+        parse_mode="HTML"
     )
 
 @router.message(F.text == "❓ Помощь")
 async def help_section_handler(message: types.Message):
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
+            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")],
+            [InlineKeyboardButton(text="🤖 Задать вопрос ИИ", callback_data="help_ai_info")]
         ]
     )
     await message.answer(
-        "❓ <b>Помощь и поддержка</b>\n\n"
-        "Если вам тяжело, вы испытываете тягу или у вас срочный вопрос по программе — вы всегда можете задать его мне в чате или позвать живого дежурного служащего.",
+        "❓ <b>Помощь и поддержка в АА</b>\n\n"
+        "Вы можете задать любой вопрос о программе нашему виртуальному помощнику в чате или связаться с дежурным служащим:",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
 
+@router.callback_query(F.data == "help_ai_info")
+async def help_ai_info_callback(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "🤖 Просто напишите свой вопрос любым сообщением в этот чат, и я постараюсь ответить на него, опираясь на опыт программы Анонимных Алкоголиков."
+    )
+    await callback.answer()
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu_callback(callback: types.CallbackQuery):
-    await callback.message.delete()
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    await callback.message.answer(
+        "🏠 <b>Главное меню</b>",
+        reply_markup=get_main_menu_keyboard(),
+        parse_mode="HTML"
+    )
     await callback.answer("Возврат в меню")
 
 @router.callback_query(F.data == "call_servant")
