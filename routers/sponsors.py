@@ -10,6 +10,24 @@ router = Router()
 class EditSponsorState(StatesGroup):
     waiting_for_new_value = State()
 
+# Вспомогательный класс состояний для регистрации (если у тебя он в другом файле, 
+# подтяни свой или используй этот для запуска процесса)
+class SponsorForm(StatesGroup):
+    waiting_for_name = State()
+
+# 1. Обработка нажатия кнопки "📝 Заполнить анкету спонсора" из меню
+@router.callback_query(F.data == "start_sponsor_registration")
+async def start_sponsor_registration_handler(callback: CallbackQuery, state: FSMContext):
+    await callback.message.delete()
+    await callback.message.answer(
+        "📝 <b>Регистрация анкеты спонсора</b>\n\n"
+        "Пожалуйста, введите ваше имя (или как к вам обращаться в сообществе):",
+        parse_mode="HTML"
+    )
+    # Переводим в состояние ввода имени (замени на свою группу состояний анкеты, если она в form.py)
+    await state.set_state(SponsorForm.waiting_for_name)
+    await callback.answer()
+
 @router.message(F.text == "🤝 Спонсоры")
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu(event: Message | CallbackQuery):
