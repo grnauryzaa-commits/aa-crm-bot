@@ -1,14 +1,13 @@
 import psycopg2
 import logging
 import asyncio
-import aiosqlite # Убедись, что aiosqlite установлен в requirements.txt
 from config import DATABASE_URL as DB_URL
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
 async def init_db():
-    logging.info("🚀 Запуск принудительного обновления структуры базы данных (добавление пола и истории диалогов)...")
+    logging.info("🚀 Запуск принудительного обновления структуры базы данных (добавление пола, истории диалогов и размышлений)...")
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -60,13 +59,20 @@ async def init_db():
             );
         """)
 
+        # 4. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ИСТОРИИ ДИАЛОГОВ (В POSTGRESQL НАДЕЖНО НАВСЕГДА)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS dialog_history (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                role TEXT,
+                content TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+
         conn.commit()
         cur.close()
         conn.close()
-
-        # 4. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ИСТОРИИ ДИАЛОГОВ (ЧЕРЕЗ aiosqlite или async psycopg2)
-        # Так как проект использует async/await, инициализируем табличку диалогов через aiosqlite (или локальный файл БД истории)
-        await init_history_db()
 
         logging.info("🎉 СТРУКТУРА БАЗЫ ДАННЫХ ИСПРАВЛЕНА И ГОТОВА К РАБОТЕ!")
         
@@ -133,39 +139,49 @@ async def save_sponsor_draft(user_id, data):
 
 
 # =====================================================================
-# ФУНКЦИИ ИСТОРИИ ДИАЛОГОВ (ДЛЯ КОНТЕКСТА ИИ)
+# ФУНКЦИИ ИСТОРИИ ДИАЛОГОВ (ДЛЯ КОНТЕКСТА ИИ В POSTGRESQL)
 # =====================================================================
 
-async def init_history_db():
-    """Создает локальную таблицу истории чата для сохранения контекста беседы с ИИ"""
-    async with aiosqlite.connect("sponsors.db") as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS dialog_history (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id BIGINT,
-                role TEXT,
-                content TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.commit()
-
-async def add_message_to_history(user_id: int, role: str, content: str):
-    """Записывает реплику пользователя или бота в историю диалога"""
-    async with aiosqlite.connect("sponsors.db") as db:
-        await db.execute(
-            "INSERT INTO dialog_history (user_id, role, content) VALUES (?, ?, ?)",
+def _add_message_sync(user_id: int, role: str, content: str):
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO dialog_history (user_id, role, content) VALUES (%s, %s, %s)",
             (user_id, role, content)
         )
-        await db.commit()
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Ошибка сохранения истории в БД: {e}")
+
+async def add_message_to_history(user_id: int, role: str, content: str):
+    """Записывает реплику пользователя или бота в историю диалога (PostgreSQL)"""
+    await asyncio.to_thread(_add_message_sync, user_id, role, content)
+
+
+def _get_recent_history_sync(user_id: int, limit: int = 6) -> list:
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT role, content FROM dialog_history WHERE user_id = %s ORDER BY id DESC LIMIT %s",
+            (user_id, limit)
+        )
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        # Возвращаем в хронологическом порядке (от старых к новым)
+        history = []
+        for role, content in reversed(rows):
+            history.append({"role": role, "content": content})
+        return history
+    except Exception as e:
+        logging.error(f"Ошибка чтения истории из БД: {e}")
+        return []
 
 async def get_recent_history(user_id: int, limit: int = 6) -> list:
     """Достает последние сообщения пользователя для сохранения логической цепочки"""
-    async with aiosqlite.connect("sponsors.db") as db:
-        async with db.execute(
-            "SELECT role, content FROM dialog_history WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-            (user_id, limit)
-        ) as cursor:
-            rows = await cursor.fetchall()
-            # Возвращаем в хронологическом порядке (от старых к новым)
-            return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
+    return await asyncio.to_thread(_get_recent_history_sync, user_id, limit)
