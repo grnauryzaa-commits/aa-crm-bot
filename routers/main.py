@@ -21,26 +21,42 @@ from routers.reflections import (
     send_morning_prayer_to_channel,
     send_evening_prayer_to_channel
 )
+from routers.ai_chat import router as ai_chat_router  # Отдельный роутер для ИИ
 
 logging.basicConfig(level=logging.INFO)
 
 async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
-    dp.include_routers(start_router, menu_router, form_router, sponsors_router, admin_router, help_router, schedules_router, reflections_router)
+    
+    # Подключаем все роутеры. 
+    # ВАЖНО: ai_chat_router (ИИ) стоит строго последним, чтобы не перехватывать кнопки!
+    dp.include_routers(
+        start_router, 
+        menu_router, 
+        form_router, 
+        sponsors_router, 
+        admin_router, 
+        help_router, 
+        schedules_router, 
+        reflections_router,
+        ai_chat_router
+    )
 
+    # Настраиваем планировщик
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
     
-    # 06:00 - Ежедневные размышления
+    # 06:00 - Ежедневные размышления в канал
     scheduler.add_job(send_daily_reflection_to_channel, CronTrigger(hour=6, minute=0), args=[bot])
-    # 06:30 - Утренний 11 шаг
+    # 06:30 - Утренний 11 шаг в канал
     scheduler.add_job(send_morning_prayer_to_channel, CronTrigger(hour=6, minute=30), args=[bot])
-    # 23:00 - Вечерний 11 шаг
+    # 23:00 - Вечерний 11 шаг в канал
     scheduler.add_job(send_evening_prayer_to_channel, CronTrigger(hour=23, minute=0), args=[bot])
     
     scheduler.start()
-    logging.info("Планировщик запущен в таймзоне Asia/Almaty (Расписание обновлено).")
+    logging.info("Планировщик запущен в таймзоне Asia/Almaty.")
 
+    # Запуск бота
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

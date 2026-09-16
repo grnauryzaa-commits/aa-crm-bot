@@ -6,11 +6,9 @@ from datetime import datetime
 import html
 import logging
 from routers.reflections import MORNING_PRAYER_TEXT, EVENING_PRAYER_TEXT
-from .ai_helper import ask_ai_for_beginner
+from config import DATABASE_URL as DB_URL
 
 router = Router()
-
-DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 
 def get_main_menu_keyboard():
     return ReplyKeyboardMarkup(
@@ -122,30 +120,3 @@ async def call_servant_callback(callback: types.CallbackQuery):
         "Также вы всегда можете обратиться к разделу «Расписание» или на живые группы."
     )
     await callback.answer()
-
-@router.message(F.text)
-async def handle_beginner_questions(message: types.Message):
-    menu_buttons = [
-        "📖 Ежедневные размышления", "🙏 11 Шаг", 
-        "➕ Стать спонсором", "🤝 Спонсоры", 
-        "📅 Расписание", "❓ Помощь"
-    ]
-    if message.text in menu_buttons:
-        return
-
-    await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    
-    # Передаем user_id для привязки к памяти диалога
-    ai_response = await ask_ai_for_beginner(message.from_user.id, message.text)
-
-    servant_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
-        ]
-    )
-
-    await message.answer(
-        ai_response, 
-        parse_mode="Markdown", 
-        reply_markup=servant_keyboard
-    )
