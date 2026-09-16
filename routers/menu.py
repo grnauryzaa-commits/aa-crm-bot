@@ -8,7 +8,7 @@ import html
 import logging
 from routers.reflections import MORNING_PRAYER_TEXT, EVENING_PRAYER_TEXT
 from .ai_helper import ask_ai_for_beginner
-from config import DATABASE_URL
+from config import DATABASE_URL, SERVANT_CHAT_ID
 
 router = Router()
 
@@ -235,8 +235,28 @@ async def back_to_menu_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "call_servant")
 async def call_servant_callback(callback: types.CallbackQuery):
+    user = callback.from_user
+    user_link = f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
+    username_text = f" (@{user.username})" if user.username else ""
+    
+    alert_text = (
+        f"🚨 <b>Новый запрос о помощи!</b>\n\n"
+        f"Пользователь: {user_link}{username_text}\n"
+        f"ID: <code>{user.id}</code>\n"
+        f"Нажал кнопку «Позвать живого служащего»."
+    )
+
+    try:
+        await callback.bot.send_message(
+            chat_id=SERVANT_CHAT_ID,
+            text=alert_text,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление служащему: {e}")
+
     await callback.message.answer(
-        "🙏 Ваша заявка принята. Дежурный служащий сообщества свяжется с вами в ближайшее время."
+        "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и свяжется с вами в ближайшее время."
     )
     await callback.answer()
 
