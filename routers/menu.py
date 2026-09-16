@@ -54,12 +54,11 @@ async def cmd_start(message: types.Message, state: FSMContext):
         parse_mode="HTML"
     )
 
-@router.message(F.text == "🏠 Главное меню")
+@router.message(F.text.in_({"🏠 Главное меню", "Главное меню"}))
 async def cmd_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
-        "🏠 <b>Главное меню</b>\n\n"
-        "Выберите нужный раздел внизу 👇",
+        "🏠 <b>Главное меню</b>\n\nВыберите нужный раздел внизу 👇",
         reply_markup=get_main_menu_keyboard(),
         parse_mode="HTML"
     )
@@ -80,7 +79,7 @@ async def show_daily_reflection(message: types.Message):
         else:
             await message.answer("На сегодня размышления не найдены в базе.", reply_markup=get_main_menu_keyboard())
     except Exception as e:
-        logging.error(f"Ошибка получения размышлений для пользователя: {e}")
+        logging.error(f"Ошибка получения размышлений: {e}")
         await message.answer("Произошла ошибка при получении размышлений.", reply_markup=get_main_menu_keyboard())
 
 @router.message(F.text == "🙏 11 Шаг")
@@ -123,6 +122,51 @@ async def become_sponsors_menu(message: types.Message):
         parse_mode="HTML"
     )
 
+# --- НОВЫЕ ОБРАБОТЧИКИ ДЛЯ ОСТАВШИХСЯ КНОПОК МЕНЮ ---
+
+@router.message(F.text == "🤝 Спонсоры")
+async def sponsors_section_handler(message: types.Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Список спонсоров", callback_data="show_sponsors_list")],
+            [InlineKeyboardButton(text="➕ Стать спонсором", callback_data="start_sponsor_registration")]
+        ]
+    )
+    await message.answer(
+        "🤝 <b>Раздел спонсоров АА</b>\n\n"
+        "Здесь вы можете найти себе наставника (спонсора) для прохождения Шагов или зарегистрироваться самому.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+@router.message(F.text == "📅 Расписание")
+async def schedule_section_handler(message: types.Message):
+    await message.answer(
+        "📅 <b>Расписание собраний АА</b>\n\n"
+        "Актуальное расписание онлайн и оффлайн групп сообщества:\n"
+        "• Ежедневные онлайн-собрания проводятся в Zoom/Telegram.\n"
+        "• Официальный сайт расписания: <a href=\"https://aaorg.kz\">aaorg.kz</a>",
+        reply_markup=get_main_menu_keyboard(),
+        parse_mode="HTML",
+        disable_web_page_preview=True
+    )
+
+@router.message(F.text == "❓ Помощь")
+async def help_section_handler(message: types.Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
+        ]
+    )
+    await message.answer(
+        "❓ <b>Помощь и поддержка</b>\n\n"
+        "Если вам тяжело, вы испытываете тягу или у вас срочный вопрос по программе — вы всегда можете задать его мне в чате (я постараюсь помочь) или позвать живого дежурного служащего.",
+        reply_markup=keyboard,
+        parse_mode="HTML"
+    )
+
+# --------------------------------------------------
+
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu_callback(callback: types.CallbackQuery):
     await callback.message.delete()
@@ -141,7 +185,7 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
     menu_buttons = [
         "📖 Ежедневные размышления", "🙏 11 Шаг", 
         "➕ Стать спонсором", "🤝 Спонсоры", 
-        "📅 Расписание", "❓ Помощь", "🏠 Главное меню"
+        "📅 Расписание", "❓ Помощь", "🏠 Главное меню", "Главное меню"
     ]
     if message.text in menu_buttons:
         return
