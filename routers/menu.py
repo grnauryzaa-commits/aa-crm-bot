@@ -122,8 +122,6 @@ async def become_sponsors_menu(message: types.Message):
         parse_mode="HTML"
     )
 
-# --- НОВЫЕ ОБРАБОТЧИКИ ДЛЯ ОСТАВШИХСЯ КНОПОК МЕНЮ ---
-
 @router.message(F.text == "🤝 Спонсоры")
 async def sponsors_section_handler(message: types.Message):
     keyboard = InlineKeyboardMarkup(
@@ -134,7 +132,7 @@ async def sponsors_section_handler(message: types.Message):
     )
     await message.answer(
         "🤝 <b>Раздел спонсоров АА</b>\n\n"
-        "Здесь вы можете найти себе наставника (спонсора) для прохождения Шагов или зарегистрироваться самому.",
+        "Вы можете посмотреть актуальный список доступных спонсоров из базы данных или подать собственную анкету.",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -160,12 +158,10 @@ async def help_section_handler(message: types.Message):
     )
     await message.answer(
         "❓ <b>Помощь и поддержка</b>\n\n"
-        "Если вам тяжело, вы испытываете тягу или у вас срочный вопрос по программе — вы всегда можете задать его мне в чате (я постараюсь помочь) или позвать живого дежурного служащего.",
+        "Если вам тяжело, вы испытываете тягу или у вас срочный вопрос по программе — вы всегда можете задать его мне в чате или позвать живого дежурного служащего.",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
-
-# --------------------------------------------------
 
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu_callback(callback: types.CallbackQuery):
