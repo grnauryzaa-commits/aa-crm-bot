@@ -1,6 +1,7 @@
 from aiogram import Router, F, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
 import psycopg2
 from datetime import datetime
 import html
@@ -124,8 +125,8 @@ async def call_servant_callback(callback: types.CallbackQuery):
     )
     await callback.answer()
 
-@router.message(F.text)
-async def handle_beginner_questions(message: types.Message):
+@router.message(StateFilter(None), F.text)
+async def handle_beginner_questions(message: types.Message, state: FSMContext):
     menu_buttons = [
         "📖 Ежедневные размышления", "🙏 11 Шаг", 
         "➕ Стать спонсором", "🤝 Спонсоры", 
