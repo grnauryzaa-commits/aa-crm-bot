@@ -116,28 +116,79 @@ async def become_sponsors_menu(message: types.Message):
     )
     await message.answer(
         "➕ <b>Стать спонсором в АА</b>\n\n"
-        "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими. "
-        "Если вы чувствуете в себе силы и имеете устойчивую трезвость, вы можете зарегистрироваться как спонсор.",
+        "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
 
+# --- РАСПИСАНИЕ (Твой оригинальный код) ---
+
+def get_schedule_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 Онлайн группы", callback_data="s_online")],
+        [InlineKeyboardButton(text="📍 Алматы: Жубанова 3а", callback_data="s_zhub")],
+        [InlineKeyboardButton(text="📍 Алматы: Зенкова 24", callback_data="s_zenk")],
+        [InlineKeyboardButton(text="📍 Алматы: Тимирязева 42", callback_data="s_tim")],
+        [InlineKeyboardButton(text="📍 Другие локации", callback_data="s_other")]
+    ])
+
 @router.message(F.text == "📅 Расписание")
-async def schedule_section_handler(message: types.Message):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🌐 Открыть сайт расписания", url="https://aaorg.kz")],
-            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_menu")]
-        ]
-    )
-    await message.answer(
-        "📅 <b>Расписание групп АА</b>\n\n"
-        "Актуальное расписание онлайн и оффлайн собраний:\n"
-        "• Официальный сайт: <a href=\"https://aaorg.kz\">aaorg.kz</a>",
-        reply_markup=keyboard,
-        parse_mode="HTML",
-        disable_web_page_preview=True
-    )
+async def show_schedule_menu(message: types.Message):
+    await message.answer("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_schedule_menu_kb(), parse_mode="HTML")
+
+@router.callback_query(F.data.startswith("s_"))
+async def callback_schedule(callback: types.CallbackQuery):
+    data = callback.data
+    kb_back = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+    
+    help_text = "\n\nЕсли у вас есть вопросы, нужна поддержка — мы готовы помочь.\n📞 Горячая линия: +7 708 317 17 69"
+
+    if data == "s_back":
+        await callback.message.edit_text("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_schedule_menu_kb(), parse_mode="HTML")
+    
+    elif data == "s_online":
+        text = ("🌐 <b>ОНЛАЙН</b>\n\n• <b>Пробуждение</b>: Вт, Чт, Сб 21:00\n<a href='https://us06web.zoom.us/j/82036099070'>Zoom</a> | Пароль: +77754565358\n\n"
+                "• <b>Бірлік (каз)</b>: Чт 21:00\n<a href='https://us06web.zoom.us/j/7473499478'>Zoom</a> | Пароль: +77074337408\n\n"
+                "• <b>Шаг за шагом</b>: Вт 19:00\n<a href='https://t.me/+JqgMpZCz_fY1OTVi'>Telegram</a>" + help_text)
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_back), parse_mode="HTML", disable_web_page_preview=True)
+
+    elif data == "s_zhub":
+        text = ("🏢 <b>Жубанова 3а</b> (между Алтынсарина и Отеген Батыра)\n301 кабинет, 3 этаж (вход справа от гостиницы \"Достар\")\n\n"
+                "• <b>Виктория</b>: Вт, Чт 19:30, Сб 19:00\n• <b>Шапагат (каз)</b>: Пн, Ср 19:00, Сб 17:00\n"
+                "• <b>Чайхана (Новички)</b>: Вс 11:00\n• <b>Женский клуб</b>: Вс 13:00" + help_text)
+        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047375041535/76.857015,43.236908")],
+              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+
+    elif data == "s_zenk":
+        text = ("🏢 <b>Зенкова 24 (Дом Офицеров)</b>\n(вход с ул. Калдаякова, по железной лестнице наверх)\n\n"
+                "• <b>8 марта</b>: Ежедневно 19:00, Вт/Чт 12:00\n• <b>АлмА (Женская)</b>: Сб 12:00\n"
+                "• <b>ААА (Мужская)</b>: Сб 17:00\n• <b>ВДА</b>: уточнять по контактам" + help_text)
+        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/70000001112488343")],
+              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+
+    elif data == "s_tim":
+        text = ("🏢 <b>Тимирязева 42, корпус 23, каб 102</b>\n\n"
+                "• <b>Друзья Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00" + help_text)
+        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047374971407/76.904347,43.217837")],
+              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+
+    elif data == "s_other":
+        text = ("📍 <b>Другие локации</b>\n\n• <b>Аксай</b> (Райымбека 493): Вс 13:00\n"
+                "• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64): Пн, Ср, Пт 19:00, Сб 14:00\n"
+                "• <b>Боралдай</b> (Курчатова 13а): Сб 17:00\n• <b>Талхиз (Талгар)</b> (Муратбаева 26): Пн, Чт, Пт 19:00\n\n"
+                "• <b>Турксиб</b>: Уточнять по тел +77478601105\nВремя: Вт, Чт 19:00-20:30; Вс 17:00-18:30" + help_text)
+        kb = [[InlineKeyboardButton(text="📍 Новые Очки (2GIS)", url="https://2gis.kz/almaty/geo/9430047374988153/76.950690,43.262199")],
+              [InlineKeyboardButton(text="📍 Турксиб (2GIS)", url="https://2gis.kz/almaty/geo/9430047374991567/76.955136,43.330053")],
+              [InlineKeyboardButton(text="📍 Талхиз (2GIS)", url="https://2gis.kz/almaty/geo/70000001045475756/77.234246,43.317702")],
+              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+    
+    await callback.answer()
+
+# --- КОНЕЦ РАСПИСАНИЯ ---
 
 @router.message(F.text == "❓ Помощь")
 async def help_section_handler(message: types.Message):
@@ -148,7 +199,7 @@ async def help_section_handler(message: types.Message):
     )
     await message.answer(
         "❓ <b>Помощь и поддержка</b>\n\n"
-        "Если вам тяжело, вы испытываете тягу или у вас срочный вопрос по программе — вы всегда можете задать его мне в чате или позвать живого дежурного служащего.",
+        "Если вам тяжело или у вас срочный вопрос — вы можете задать его мне в чате или позвать дежурного служащего.",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -184,17 +235,11 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
         return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    
     ai_response = await ask_ai_for_beginner(message.from_user.id, message.text)
-
+    
     servant_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
         ]
     )
-
-    await message.answer(
-        ai_response, 
-        parse_mode="Markdown", 
-        reply_markup=servant_keyboard
-    )
+    await message.answer(ai_response, parse_mode="Markdown", reply_markup=servant_keyboard)
