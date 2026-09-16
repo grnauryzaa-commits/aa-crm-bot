@@ -1,122 +1,209 @@
-from aiogram import Router, F, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+import traceback
+from aiogram import Router, F, Bot
+from aiogram.fsm.context import FSMContext
+from aiogram.types import Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from routers.states import SponsorForm
+from routers.menu import get_main_menu_keyboard
+from config import ADMINS, DATABASE_URL
+import database as db
 import psycopg2
-from datetime import datetime
 import html
-import logging
-from routers.reflections import MORNING_PRAYER_TEXT, EVENING_PRAYER_TEXT
-from config import DATABASE_URL as DB_URL
 
 router = Router()
 
-def get_main_menu_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="📖 Ежедневные размышления")],
-            [KeyboardButton(text="🙏 11 Шаг"), KeyboardButton(text="➕ Стать спонсором")],
-            [KeyboardButton(text="🤝 Спонсоры"), KeyboardButton(text="📅 Расписание")],
-            [KeyboardButton(text="❓ Помощь")]
-        ],
-        resize_keyboard=True,
-        input_field_placeholder="Выберите нужный раздел внизу 👇"
-    )
+# ==========================================
+# ШАГИ РЕГИСТРАЦИИ СПОНСОРА ЧЕРЕЗ FSM
+# ==========================================
 
-def format_reflection_text(text, today):
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
-    forbidden = [
-        "WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
-        "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp", 
-        "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", 
-        "Skype", "Mail", "Альтернативный вариант",
-        "Ежедневные Размышления на", "Сегодня"
-    ]
-    filtered = [line for line in lines if not any(f in line for f in forbidden)]
-    if len(filtered) > 0 and f"{today.day}" in filtered[0] and "июня" in filtered[0].lower() and len(filtered[0]) < 20:
-        filtered.pop(0)
-    
-    body = "\n\n".join(filtered)
-    months = ["января", "февраля", "марта", "апреля", "мая", "июня", 
-              "июля", "августа", "сентября", "октября", "ноября", "декабря"]
-    return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
-
-@router.message(Command("start"))
-async def cmd_start(message: types.Message):
-    await message.answer(
-        "Приветствую! Добро пожаловать в бот сообщества Анонимных Алкоголиков.\n\n"
-        "🤖 Вы можете задать мне любой вопрос о программе АА своими словами, и я постараюсь помочь.\n\n"
-        "👇 <b>Главное меню всегда находится внизу экрана.</b> Нажимайте на нужные кнопки:",
-        reply_markup=get_main_menu_keyboard(),
-        parse_mode="HTML"
-    )
-
-@router.message(F.text == "📖 Ежедневные размышления")
-async def show_daily_reflection(message: types.Message):
-    today = datetime.now()
+# 1. Запуск по текстовой кнопке из главного меню (выдает текст и инлайн-кнопку)
+@router.message(F.text == "➕ Стать спонсором")
+async def start_form_text(message: Message, state: FSMContext):
     try:
-        conn = psycopg2.connect(DB_URL)
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📝 Заполнить анкету спонсора", callback_data="start_sponsor_registration")]
+            ]
+        )
+        await message.answer(
+            "➕ <b>Стать спонсором в АА</b>\n\n"
+            "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими. "
+            "Если вы чувствуете в себе силы и имеете устойчивую трезвость, вы можете зарегистрироваться как спонсор.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        print(f"Ошибка в start_form_text: {e}")
+        traceback.print_exc()
+
+# 2. Запуск по инлайн-кнопке "Заполнить анкету спонсора"
+@router.callback_query(F.data == "start_sponsor_registration")
+async def start_form_callback(callback: CallbackQuery, state: FSMContext):
+    try:
+        print(f"DEBUG: Сработал callback_query start_sponsor_registration от юзера {callback.from_user.id}")
+        await callback.message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(SponsorForm.name)
+        await callback.answer()
+        print("DEBUG: Анкета успешно запущена, стейт установлен.")
+    except Exception as e:
+        print(f"CRITICAL ERROR в start_form_callback: {e}")
+        traceback.print_exc()
+        try:
+            await callback.answer("Произошла ошибка при запуске анкеты.", show_alert=True)
+        except:
+            pass
+
+@router.message(SponsorForm.name)
+async def process_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text)
+    await message.answer("Какой твой пол? (Брат / Сестра)")
+    await state.set_state(SponsorForm.gender)
+
+@router.message(SponsorForm.gender)
+async def process_gender(message: Message, state: FSMContext):
+    await state.update_data(gender=message.text)
+    await message.answer("📅 Напиши свой возраст (цифрой):")
+    await state.set_state(SponsorForm.age)
+
+@router.message(SponsorForm.age)
+async def process_age(message: Message, state: FSMContext):
+    await state.update_data(age=message.text)
+    await message.answer("🕊 Какой у тебя срок трезвости? (например: 3 года 2 месяца)")
+    await state.set_state(SponsorForm.sobriety)
+
+@router.message(SponsorForm.sobriety)
+async def process_sobriety(message: Message, state: FSMContext):
+    await state.update_data(sobriety=message.text)
+    await message.answer("📍 Из какого ты города?")
+    await state.set_state(SponsorForm.city)
+
+@router.message(SponsorForm.city)
+async def process_city(message: Message, state: FSMContext):
+    await state.update_data(city=message.text)
+    await message.answer("📖 Напиши коротко о своем опыте по программе / спонсорстве:")
+    await state.set_state(SponsorForm.program_info)
+
+@router.message(SponsorForm.program_info)
+async def process_program_info(message: Message, state: FSMContext):
+    await state.update_data(program_info=message.text)
+    await message.answer("📞 Напиши свой номер телефона для связи:")
+    await state.set_state(SponsorForm.phone)
+
+@router.message(SponsorForm.phone)
+async def process_phone(message: Message, state: FSMContext, bot: Bot):
+    await state.update_data(phone=message.text)
+    data = await state.get_data()
+    tg_id = message.from_user.id
+    
+    sponsor_data = {
+        'name': data.get('name'),
+        'gender': data.get('gender'),
+        'age': data.get('age'),
+        'sobriety': data.get('sobriety'),
+        'city': data.get('city'),
+        'program_info': data.get('program_info'),
+        'username': message.from_user.username or "нет",
+        'phone': data.get('phone')
+    }
+
+    try:
+        await db.save_sponsor_draft(tg_id, sponsor_data)
+    except Exception as e:
+        print(f"Ошибка сохранения черновика в БД: {e}")
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Одобрить карточку", callback_data=f"approve_sp_{tg_id}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"decline_sp_{tg_id}")
+        ]
+    ])
+    
+    admin_text = (
+        "🔔 ЗАЯВКА НА РЕГИСТРАЦИЮ СПОНСОРА\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"👤 Имя: {html.escape(str(sponsor_data['name']))} ({html.escape(str(sponsor_data['gender']))})\n"
+        f"📅 Возраст: {html.escape(str(sponsor_data['age']))}\n"
+        f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
+        f"📍 Город: {html.escape(str(sponsor_data['city']))}\n\n"
+        f"📖 Опыт/Программа: {html.escape(str(sponsor_data['program_info']))}\n"
+        f"✈️ Telegram: @{html.escape(str(sponsor_data['username']))}\n"
+        f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
+        "━━━━━━━━━━━━━━━━━━"
+    )
+
+    for admin_id in ADMINS:
+        try:
+            await bot.send_message(chat_id=admin_id, text=admin_text, reply_markup=keyboard, parse_mode="HTML")
+        except Exception as e:
+            print(f"Не удалось отправить админу {admin_id}: {e}")
+    
+    await message.answer("✅ Твоя анкета успешно отправлена на модерацию администратору!", reply_markup=get_main_menu_keyboard())
+    await state.clear()
+
+
+# ==========================================
+# МОДЕРАЦИЯ АНКЕТ АДМИНИСТРАТОРАМИ (ОДОБРИТЬ / ОТКЛОНИТЬ)
+# ==========================================
+
+@router.callback_query(F.data.startswith("approve_sp_"))
+async def approve_sponsor(callback: CallbackQuery, bot: Bot):
+    target_user_id = int(callback.data.split("_")[2])
+    print(f"DEBUG: Нажата кнопка ОДОБРИТЬ для пользователя {target_user_id}")
+    
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        cur.execute("SELECT text FROM reflections_archive WHERE day = %s AND month = %s", (today.day, today.month))
-        row = cur.fetchone()
+        
+        cur.execute("SELECT name, gender, age, sobriety, city, username, phone, program_info FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
+        draft = cur.fetchone()
+        
+        if draft:
+            cur.execute("""
+                INSERT INTO sponsors (user_id, name, gender, age, sobriety, city, username, phone, program_info)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    name = EXCLUDED.name, gender = EXCLUDED.gender, age = EXCLUDED.age,
+                    sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, username = EXCLUDED.username,
+                    phone = EXCLUDED.phone, program_info = EXCLUDED.program_info;
+            """, (target_user_id, *draft))
+            
+            cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
+            conn.commit()
+            
         cur.close()
         conn.close()
-        if row:
-            text = format_reflection_text(row[0], today)
-            await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu_keyboard())
-        else:
-            await message.answer("На сегодня размышления не найдены в базе.", reply_markup=get_main_menu_keyboard())
+
+        await callback.message.edit_text(f"{callback.message.text}\n\n✅ ОДОБРЕНО АДМИНИСТРАТОРОМ", reply_markup=None)
+        await callback.answer("Анкета одобрена!")
+        
+        try:
+            await bot.send_message(target_user_id, "🎉 Поздравляем! Ваша анкета спонсора одобрена.")
+        except:
+            pass
+            
     except Exception as e:
-        logging.error(f"Ошибка получения размышлений для пользователя: {e}")
-        await message.answer("Произошла ошибка при получении размышлений.", reply_markup=get_main_menu_keyboard())
+        print(f"Ошибка в approve: {e}")
+        await callback.answer("Ошибка БД", show_alert=True)
 
-@router.message(F.text == "🙏 11 Шаг")
-async def step_eleven_menu(message: types.Message):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🌅 Утренняя молитва", callback_data="get_morning_prayer")],
-            [InlineKeyboardButton(text="🌙 Вечерняя молитва", callback_data="get_evening_prayer")]
-        ]
-    )
-    await message.answer(
-        "🙏 <b>11 Шаг программы АА</b>\n\nВыберите нужную практику:",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+@router.callback_query(F.data.startswith("decline_sp_"))
+async def decline_sponsor(callback: CallbackQuery, bot: Bot):
+    target_user_id = int(callback.data.split("_")[2])
+    print(f"DEBUG: Нажата кнопка ОТКЛОНИТЬ для пользователя {target_user_id}")
+    
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
+        conn.commit()
+        cur.close()
+        conn.close()
 
-@router.callback_query(F.data == "get_morning_prayer")
-async def send_morning_callback(callback: types.CallbackQuery):
-    await callback.message.answer(MORNING_PRAYER_TEXT, parse_mode="HTML")
-    await callback.answer()
-
-@router.callback_query(F.data == "get_evening_prayer")
-async def send_evening_callback(callback: types.CallbackQuery):
-    await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
-    await callback.answer()
-
-@router.message(F.text == "➕ Стать спонсором")
-async def become_sponsors_menu(message: types.Message):
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_menu")]
-        ]
-    )
-    await message.answer(
-        "➕ <b>Стать спонсором в АА</b>\n\n"
-        "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими. "
-        "Если вы чувствуете в себе силы и имеете устойчивую трезвость, вы можете зарегистрироваться как спонсор.",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
-
-@router.callback_query(F.data == "back_to_menu")
-async def back_to_menu_callback(callback: types.CallbackQuery):
-    await callback.message.delete()
-    await callback.answer("Возврат в меню")
-
-@router.callback_query(F.data == "call_servant")
-async def call_servant_callback(callback: types.CallbackQuery):
-    await callback.message.answer(
-        "🙏 Ваша заявка принята. Дежурный служащий сообщества свяжется с вами в ближайшее время.\n\n"
-        "Также вы всегда можете обратиться к разделу «Расписание» или на живые группы."
-    )
-    await callback.answer()
+        await callback.message.edit_text(f"{callback.message.text}\n\n❌ ОТКЛОНЕНО АДМИНИСТРАТОРОМ", reply_markup=None)
+        await callback.answer("Анкета отклонена.")
+        
+        try:
+            await bot.send_message(target_user_id, "❌ К сожалению, ваша анкета спонсора была отклонена.")
+        except:
+            pass
+    except Exception as e:
+        print(f"Ошибка в decline: {e}")
+        await callback.answer("Ошибка БД", show_alert=True)
