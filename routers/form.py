@@ -1,3 +1,4 @@
+import traceback
 from aiogram import Router, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -17,15 +18,29 @@ router = Router()
 # 1. Запуск по текстовой кнопке из главного меню
 @router.message(F.text == "➕ Стать спонсором")
 async def start_form_text(message: Message, state: FSMContext):
-    await message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
-    await state.set_state(SponsorForm.name)
+    try:
+        await message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(SponsorForm.name)
+    except Exception as e:
+        print(f"Ошибка в start_form_text: {e}")
+        traceback.print_exc()
 
 # 2. Запуск по инлайн-кнопке "Заполнить анкету спонсора" из подменю
 @router.callback_query(F.data == "start_sponsor_registration")
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
-    await state.set_state(SponsorForm.name)
-    await callback.answer()
+    try:
+        print(f"DEBUG: Сработал callback_query start_sponsor_registration от юзера {callback.from_user.id}")
+        await callback.message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
+        await state.set_state(SponsorForm.name)
+        await callback.answer()
+        print("DEBUG: Анкета успешно запущена, стейт установлен.")
+    except Exception as e:
+        print(f"CRITICAL ERROR в start_form_callback: {e}")
+        traceback.print_exc()
+        try:
+            await callback.answer("Произошла ошибка при запуске анкеты.", show_alert=True)
+        except:
+            pass
 
 @router.message(SponsorForm.name)
 async def process_name(message: Message, state: FSMContext):
