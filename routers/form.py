@@ -15,17 +15,27 @@ router = Router()
 # ШАГИ РЕГИСТРАЦИИ СПОНСОРА ЧЕРЕЗ FSM
 # ==========================================
 
-# 1. Запуск по текстовой кнопке из главного меню
+# 1. Запуск по текстовой кнопке из главного меню (выдает текст и инлайн-кнопку)
 @router.message(F.text == "➕ Стать спонсором")
 async def start_form_text(message: Message, state: FSMContext):
     try:
-        await message.answer("👤 Напиши свое имя:", reply_markup=ReplyKeyboardRemove())
-        await state.set_state(SponsorForm.name)
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="📝 Заполнить анкету спонсора", callback_data="start_sponsor_registration")]
+            ]
+        )
+        await message.answer(
+            "➕ <b>Стать спонсором в АА</b>\n\n"
+            "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими. "
+            "Если вы чувствуете в себе силы и имеете устойчивую трезвость, вы можете зарегистрироваться как спонсор.",
+            reply_markup=keyboard,
+            parse_mode="HTML"
+        )
     except Exception as e:
         print(f"Ошибка в start_form_text: {e}")
         traceback.print_exc()
 
-# 2. Запуск по инлайн-кнопке "Заполнить анкету спонсора" из подменю
+# 2. Запуск по инлайн-кнопке "Заполнить анкету спонсора"
 @router.callback_query(F.data == "start_sponsor_registration")
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
     try:
