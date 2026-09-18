@@ -15,8 +15,8 @@ from routers.sponsors import router as sponsors_router
 from routers.admin import router as admin_router
 from routers.help import router as help_router
 from routers.schedules import router as schedules_router
+# Импортируем функции рассылки напрямую
 from routers.reflections import (
-    router as reflections_router, 
     send_daily_reflection_to_channel, 
     send_morning_prayer_to_channel,
     send_evening_prayer_to_channel
@@ -29,7 +29,7 @@ async def main():
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     
-    # Подключаем все роутеры. 
+    # Подключаем все рабочие роутеры
     # ВАЖНО: ai_chat_router (ИИ) стоит строго последним, чтобы не перехватывать кнопки!
     dp.include_routers(
         start_router, 
@@ -39,11 +39,10 @@ async def main():
         admin_router, 
         help_router, 
         schedules_router, 
-        reflections_router,
         ai_chat_router
     )
 
-    # Настраиваем планировщик
+    # Настраиваем планировщик для отправки контента в канал по расписанию
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
     
     # 06:00 - Ежедневные размышления в канал

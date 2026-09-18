@@ -1,10 +1,7 @@
 import psycopg2
-from aiogram import Router, F, types, Bot
 from datetime import datetime
 import html
 import logging
-
-router = Router()
 
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 CHANNEL_ID = -1002140833802
@@ -57,7 +54,7 @@ def format_reflection_text(text, today):
               "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
 
-async def send_daily_reflection_to_channel(bot: Bot):
+async def send_daily_reflection_to_channel(bot):
     today = datetime.now()
     try:
         conn = psycopg2.connect(DB_URL)
@@ -71,29 +68,14 @@ async def send_daily_reflection_to_channel(bot: Bot):
     except Exception as e:
         logging.error(f"Ошибка рассылки размышлений: {e}")
 
-async def send_morning_prayer_to_channel(bot: Bot):
+async def send_morning_prayer_to_channel(bot):
     try:
         await bot.send_message(CHANNEL_ID, MORNING_PRAYER_TEXT, parse_mode="HTML")
     except Exception as e:
         logging.error(f"Ошибка отправки молитвы: {e}")
 
-async def send_evening_prayer_to_channel(bot: Bot):
+async def send_evening_prayer_to_channel(bot):
     try:
         await bot.send_message(CHANNEL_ID, EVENING_PRAYER_TEXT, parse_mode="HTML")
     except Exception as e:
         logging.error(f"Ошибка отправки вечерней молитвы: {e}")
-
-@router.message(F.text == "/test_send")
-async def test_send(message: types.Message, bot: Bot):
-    await send_daily_reflection_to_channel(bot)
-    await message.answer("Ежедневные размышления отправлены.")
-
-@router.message(F.text == "/test_prayer")
-async def test_prayer(message: types.Message, bot: Bot):
-    await send_morning_prayer_to_channel(bot)
-    await message.answer("Утренняя молитва 11 шага отправлена.")
-
-@router.message(F.text == "/test_evening")
-async def test_evening(message: types.Message, bot: Bot):
-    await send_evening_prayer_to_channel(bot)
-    await message.answer("Вечерняя молитва 11 шага отправлена.")
