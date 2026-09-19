@@ -93,7 +93,16 @@ def save_sponsor_to_db(user_id, name, city, sobriety_date, sponsor_name, phone, 
 
 @router.callback_query(F.data == "start_sponsor_registration")
 async def start_sponsor_form(callback: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(callback.from_user.id)
+    user_id = callback.from_user.id
+    lang = await get_user_language(user_id)
+    
+    # Принудительная проверка: если кнопка была на казахском, гарантированно ставим 'kk'
+    if callback.message.reply_markup:
+        for row in callback.message.reply_markup.inline_keyboard:
+            for btn in row:
+                if btn.callback_data == "start_sponsor_registration" and "толтыру" in btn.text.lower():
+                    lang = "kk"
+
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     
     await state.set_state(SponsorForm.name)
