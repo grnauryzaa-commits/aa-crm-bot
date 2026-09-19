@@ -2,6 +2,7 @@ from datetime import datetime
 import logging
 import psycopg2
 import asyncio
+import re
 
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -102,7 +103,8 @@ async def show_daily_reflection(message: types.Message):
         def fetch_reflection():
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
-            cur.execute("SELECT text FROM reflections_archive WHERE day = %s AND month = %s", (today.day, today.month))
+            # Проверяем наличие колонок title и text
+            cur.execute("SELECT title, text FROM reflections_archive WHERE day = %s AND month = %s", (today.day, today.month))
             row = cur.fetchone()
             cur.close()
             conn.close()
@@ -111,7 +113,22 @@ async def show_daily_reflection(message: types.Message):
         row = await asyncio.to_thread(fetch_reflection)
 
         if row:
-            text = f"📖 <b>Ежедневное размышление / Күнделікті ой-толғау</b>\n\n{row[0]}"
+            title, raw_text = row[0], row[1]
+            
+            # Тщательная очистка текста от мусора (соцсети, дубликаты)
+            if raw_text:
+                cleaned_text = re.sub(r'Поделиться:.*?(?=Ежедневные|Сегодня|$)', '', raw_text, flags=re.DOTALL | re.IGNORECASE)
+                cleaned_text = re.sub(r'(Twitter|Facebook|Vkontakte|WhatsApp|Telegram|EMail)', '', cleaned_text, flags=re.IGNORECASE)
+                cleaned_text = "\n".join([line.strip() for line in cleaned_text.splitlines() if line.strip()])
+            else:
+                cleaned_text = ""
+
+            header = "📖 <b>Ежедневное размышление</b>" if lang == 'ru' else "📖 <b>Күнделікті ой-толғау</b>"
+            text = f"{header}\n\n"
+            if title:
+                text += f"<b>{title}</b>\n\n"
+            text += f"{cleaned_text}"
+
             await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu_keyboard(lang))
         else:
             msg = "На сегодня размышления не найдены в базе." if lang == 'ru' else "Бүгінге ой-толғаулар табылмады."
