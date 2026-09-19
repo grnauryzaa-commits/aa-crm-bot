@@ -12,6 +12,14 @@ async def init_db():
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
+        # 0. СОЗДАНИЕ ТАБЛИЦЫ USERS (ДЛЯ ХРАНЕНИЯ ЯЗЫКА ПОЛЬЗОВАТЕЛЕЙ)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                language VARCHAR(10) DEFAULT 'ru'
+            );
+        """)
+
         # 1. СОЗДАНИЕ ТАБЛИЦЫ SPONSORS
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsors (
@@ -47,6 +55,7 @@ async def init_db():
         cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS gender VARCHAR(10);")
         cur.execute("ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS program_info TEXT;")
         cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS program_info TEXT;")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'ru';")
         
         # 3. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ЕЖЕДНЕВНЫХ РАЗМЫШЛЕНИЙ
         cur.execute("""
@@ -79,6 +88,47 @@ async def init_db():
     except Exception as e:
         logging.error(f"❌ Критическая ошибка инициализации БД: {e}")
         raise e
+
+
+# =====================================================================
+# ФУНКЦИИ УПРАВЛЕНИЯ ЯЗЫКОМ ПОЛЬЗОВАТЕЛЯ
+# =====================================================================
+
+def _get_user_language_sync(user_id: int) -> str:
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("SELECT language FROM users WHERE user_id = %s", (user_id,))
+        row = cur.fetchone()
+        cur.close()
+        conn.close()
+        return row[0] if row and row[0] in ['ru', 'kk'] else 'ru'
+    except Exception as e:
+        logging.error(f"Ошибка получения языка из БД: {e}")
+        return 'ru'
+
+async def get_user_language(user_id: int) -> str:
+    """Получает язык пользователя из базы данных (по умолчанию 'ru')."""
+    return await asyncio.to_thread(_get_user_language_sync, user_id)
+
+
+def _set_user_language_sync(user_id: int, lang: str):
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO users (user_id, language) VALUES (%s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET language = EXCLUDED.language
+        """, (user_id, lang))
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Ошибка сохранения языка в БД: {e}")
+
+async def set_user_language(user_id: int, lang: str):
+    """Сохраняет или обновляет выбранный язык пользователя в базе данных."""
+    await asyncio.to_thread(_set_user_language_sync, user_id, lang)
 
 
 # =====================================================================
