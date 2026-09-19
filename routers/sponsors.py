@@ -105,7 +105,6 @@ async def start_sponsor_registration_handler(
     callback: CallbackQuery, state: FSMContext
 ):
   lang = await get_user_language(callback.from_user.id)
-  print(f"[DEBUG SPONSORS] Reg lang for {callback.from_user.id}: {lang}")
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
   await callback.message.delete()
@@ -119,7 +118,10 @@ async def start_sponsor_registration_handler(
 async def sponsors_menu(event: Message | CallbackQuery):
   user_id = event.from_user.id
   lang = await get_user_language(user_id)
-  print(f"[DEBUG SPONSORS] Menu lang for {user_id}: {lang}")
+  
+  if isinstance(event, Message) and event.text == "🤝 Демеушілер":
+    lang = "kk"
+
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
   keyboard = InlineKeyboardMarkup(
@@ -147,7 +149,6 @@ async def sponsors_menu(event: Message | CallbackQuery):
 async def show_list_page(callback: CallbackQuery):
   user_id = callback.from_user.id
   lang = await get_user_language(user_id)
-  print(f"[DEBUG SPONSORS] List lang for {user_id}: {lang}")
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
   parts = callback.data.split("_")
@@ -384,7 +385,7 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
   await callback.answer()
 
 
-@router.message(EditSPanelState = StateFilter(EditSponsorState.waiting_for_new_value) if "StateFilter" in globals() else EditSponsorState.waiting_for_new_value)
+@router.message(EditSponsorState.waiting_for_new_value)
 async def save_edited_field(message: Message, state: FSMContext):
   lang = await get_user_language(message.from_user.id)
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
