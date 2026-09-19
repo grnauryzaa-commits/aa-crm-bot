@@ -2,12 +2,32 @@ import logging
 import psycopg2
 from aiogram import Router, types
 from aiogram.filters import Command
+from config import DATABASE_URL  # Используем общую конфигурацию, если она там есть, либо твой DB_URL
+from database import get_user_language
 from routers.menu import get_main_menu_keyboard
 
 router = Router()
 
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 ADMIN_ID = 7374545230  # Твой правильный ID
+
+# Словари локализации для команды /start
+START_TEXTS = {
+    "ru": (
+        "🕊 <b>Добро пожаловать в телеграм-бот группы АА «Наурыз»!</b>\n\n"
+        "Этот бот создан для поддержки участников нашего Содружества.\n"
+        "Здесь ты можешь узнать актуальное расписание живых встреч, найти спонсора "
+        "или предложить свою помощь в качестве наставника.\n\n"
+        "Пожалуйста, выбери интересующий раздел в меню ниже 👇"
+    ),
+    "kk": (
+        "🕊 <b>«Наурыз» АА тобының телеграм-ботына қош келдіңіз!</b>\n\n"
+        "Бұл бот біздің Достық қауымдастығымыздың қатысушыларын қолдау үшін жасалған.\n"
+        "Мұнда сіз кездесулердің өзекті кестесін біле аласыз, демеуші таба аласыз "
+        "немесе тәлімгер ретінде көмек көрсете аласыз.\n\n"
+        "Төмендегі мәзірден қажетті бөлімді таңдаңыз 👇"
+    )
+}
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
@@ -50,13 +70,9 @@ async def cmd_start(message: types.Message):
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление админу: {e}")
     
-    welcome_text = (
-        "🕊 **Добро пожаловать в телеграм-бот группы АА «Наурыз»!**\n\n"
-        "Этот бот создан для поддержки участников нашего Содружества.\n"
-        "Здесь ты можешь узнать актуальное расписание живых встреч, найти спонсора "
-        "или предложить свою помощь в качестве наставника.\n\n"
-        "Пожалуйста, выбери интересующий раздел в меню ниже 👇"
-    )
+    # Получаем язык пользователя из базы данных
+    lang = await get_user_language(telegram_id)
+    welcome_text = START_TEXTS.get(lang, START_TEXTS["ru"])
     
-    kb = get_main_menu_keyboard()
-    await message.answer(welcome_text, parse_mode="Markdown", reply_markup=kb)
+    kb = await get_main_menu_keyboard(telegram_id) if "telegram_id" in get_main_menu_keyboard.__code__.co_varnames else get_main_menu_keyboard()
+    await message.answer(welcome_text, parse_mode="HTML", reply_markup=kb)
