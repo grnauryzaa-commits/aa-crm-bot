@@ -9,19 +9,59 @@ import logging
 from routers.reflections import MORNING_PRAYER_TEXT, EVENING_PRAYER_TEXT
 from .ai_helper import ask_ai_for_beginner
 from config import DATABASE_URL, SERVANT_CHAT_IDS
+from database import get_user_language, set_user_language
 
 router = Router()
 
-def get_main_menu_keyboard():
+# Словари локализации интерфейса
+TEXTS = {
+    "ru": {
+        "start_greeting": (
+            "Приветствую! Добро пожаловать в бот сообщества Анонимных Алкоголиков.\n\n"
+            "🤖 Вы можете задать мне любой вопрос о программе АА своими словами, и я постараюсь помочь.\n\n"
+            "👇 <b>Главное меню всегда находится внизу экрана.</b> Нажимайте на нужные кнопки:"
+        ),
+        "menu": "🏠 <b>Главное меню</b>\n\nВыберите нужный раздел внизу 👇",
+        "choose_lang": "🌐 Выберите язык интерфейса и общения с ботом:",
+        "lang_changed": "✅ Язык успешно изменен на русский!",
+        "btn_reflection": "📖 Ежедневные размышления",
+        "btn_step11": "🙏 11 Шаг",
+        "btn_sponsor": "➕ Стать спонсором",
+        "btn_sponsors": "🤝 Спонсоры",
+        "btn_schedule": "📅 Расписание",
+        "btn_help": "❓ Помощь",
+        "btn_lang": "🌐 Язык: Русский",
+    },
+    "kk": {
+        "start_greeting": (
+            "Қош келдіңіз! Анонимді Алкоголиктер қауымдастығының ботына қош келдіңіз.\n\n"
+            "🤖 Сіз маған АА бағдарламасы туралы кез келген сұрақты өз сөзіңізбен қоя аласыз, мен көмектесуге тырысамын.\n\n"
+            "👇 <b>Басты мәзір әрқашан экранның төменгі бөлігінде орналасқан.</b> Қажетті түймелерді басыңыз:"
+        ),
+        "menu": "🏠 <b>Басты мәзір</b>\n\nТөменден қажетті бөлімді таңдаңыз 👇",
+        "choose_lang": "🌐 Тілді таңдаңыз / Выберите язык:",
+        "lang_changed": "✅ Тіл қазақ тіліне өзгертілді!",
+        "btn_reflection": "📖 Күнделікті ой-толғаулар",
+        "btn_step11": "🙏 11 Қадам",
+        "btn_sponsor": "➕ Демеуші болу",
+        "btn_sponsors": "🤝 Демеушілер",
+        "btn_schedule": "📅 Кесте",
+        "btn_help": "❓ Көмек",
+        "btn_lang": "🌐 Тіл: Қазақша",
+    }
+}
+
+def get_main_menu_keyboard(lang='ru'):
+    t = TEXTS[lang]
     return types.ReplyKeyboardMarkup(
         keyboard=[
-            [types.KeyboardButton(text="📖 Ежедневные размышления")],
-            [types.KeyboardButton(text="🙏 11 Шаг"), types.KeyboardButton(text="➕ Стать спонсором")],
-            [types.KeyboardButton(text="🤝 Спонсоры"), types.KeyboardButton(text="📅 Расписание")],
-            [types.KeyboardButton(text="❓ Помощь")]
+            [types.KeyboardButton(text=t["btn_reflection"])],
+            [types.KeyboardButton(text=t["btn_step11"]), types.KeyboardButton(text=t["btn_sponsor"])],
+            [types.KeyboardButton(text=t["btn_sponsors"]), types.KeyboardButton(text=t["btn_schedule"])],
+            [types.KeyboardButton(text=t["btn_help"]), types.KeyboardButton(text=t["btn_lang"])]
         ],
         resize_keyboard=True,
-        input_field_placeholder="Выберите нужный раздел внизу 👇"
+        input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇"
     )
 
 def format_reflection_text(text, today):
@@ -45,26 +85,46 @@ def format_reflection_text(text, today):
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
+    lang = get_user_language(message.from_user.id)
     await message.answer(
-        "Приветствую! Добро пожаловать в бот сообщества Анонимных Алкоголиков.\n\n"
-        "🤖 Вы можете задать мне любой вопрос о программе АА своими словами, и я постараюсь помочь.\n\n"
-        "👇 <b>Главное меню всегда находится внизу экрана.</b> Нажимайте на нужные кнопки:",
-        reply_markup=get_main_menu_keyboard(),
+        TEXTS[lang]["start_greeting"],
+        reply_markup=get_main_menu_keyboard(lang),
         parse_mode="HTML"
     )
 
-@router.message(F.text.in_({"🏠 Главное меню", "Главное меню"}))
+@router.message(F.text.in_({"🏠 Главное меню", "Главное меню", "🏠 Басты мәзір", "Басты мәзір"}))
 async def cmd_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
+    lang = get_user_language(message.from_user.id)
     await message.answer(
-        "🏠 <b>Главное меню</b>\n\nВыберите нужный раздел внизу 👇",
-        reply_markup=get_main_menu_keyboard(),
+        TEXTS[lang]["menu"],
+        reply_markup=get_main_menu_keyboard(lang),
         parse_mode="HTML"
     )
 
-@router.message(F.text == "📖 Ежедневные размышления")
+# Обработка кнопки смены языка в меню
+@router.message(F.text.in_({"🌐 Язык: Русский", "🌐 Тіл: Қазақша"}))
+async def language_menu_handler(message: types.Message):
+    lang = get_user_language(message.from_user.id)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_lang_ru")],
+        [InlineKeyboardButton(text="🇰🇿 Қазақша", callback_data="set_lang_kk")]
+    ])
+    await message.answer(TEXTS[lang]["choose_lang"], reply_markup=keyboard)
+
+@router.callback_query(F.data.startswith("set_lang_"))
+async def set_language_callback(callback: types.CallbackQuery):
+    lang = callback.data.split("_")[2] # ru или kk
+    set_user_language(callback.from_user.id, lang)
+    
+    t = TEXTS[lang]
+    await callback.message.answer(t["lang_changed"], reply_markup=get_main_menu_keyboard(lang))
+    await callback.answer()
+
+@router.message(F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}))
 async def show_daily_reflection(message: types.Message):
     today = datetime.now()
+    lang = get_user_language(message.from_user.id)
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
@@ -74,26 +134,26 @@ async def show_daily_reflection(message: types.Message):
         conn.close()
         if row:
             text = format_reflection_text(row[0], today)
-            await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu_keyboard())
+            await message.answer(text, parse_mode="HTML", reply_markup=get_main_menu_keyboard(lang))
         else:
-            await message.answer("На сегодня размышления не найдены в базе.", reply_markup=get_main_menu_keyboard())
+            msg = "На сегодня размышления не найдены в базе." if lang == 'ru' else "Бүгінге ой-толғаулар табылмады."
+            await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
     except Exception as e:
         logging.error(f"Ошибка получения размышлений: {e}")
-        await message.answer("Произошла ошибка при получении размышлений.", reply_markup=get_main_menu_keyboard())
+        msg = "Произошла ошибка при получении размышлений." if lang == 'ru' else "Ой-толғауларды алу кезінде қате орын алды."
+        await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
 
-@router.message(F.text == "🙏 11 Шаг")
+@router.message(F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"}))
 async def step_eleven_menu(message: types.Message):
+    lang = get_user_language(message.from_user.id)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🌅 Утренняя молитва", callback_data="get_morning_prayer")],
-            [InlineKeyboardButton(text="🌙 Вечерняя молитва", callback_data="get_evening_prayer")]
+            [InlineKeyboardButton(text="🌅 Утренняя молитва / Таңғы дұға", callback_data="get_morning_prayer")],
+            [InlineKeyboardButton(text="🌙 Вечерняя молитва / Кешкі дұға", callback_data="get_evening_prayer")]
         ]
     )
-    await message.answer(
-        "🙏 <b>11 Шаг программы АА</b>\n\nВыберите нужную практику:",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+    title = "🙏 <b>11 Шаг программы АА</b>\n\nВыберите нужную практику:" if lang == 'ru' else "🙏 <b>АА 11 Қадамы</b>\n\nҚажетті тәжірибені таңдаңыз:"
+    await message.answer(title, reply_markup=keyboard, parse_mode="HTML")
 
 @router.callback_query(F.data == "get_morning_prayer")
 async def send_morning_callback(callback: types.CallbackQuery):
@@ -105,32 +165,33 @@ async def send_evening_callback(callback: types.CallbackQuery):
     await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
     await callback.answer()
 
-@router.message(F.text == "➕ Стать спонсором")
+@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
 async def become_sponsors_menu(message: types.Message):
+    lang = get_user_language(message.from_user.id)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Заполнить анкету спонсора", callback_data="start_sponsor_registration")],
-            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_menu")]
+            [InlineKeyboardButton(text="📝 Заполнить анкету / Сауалнама толтыру", callback_data="start_sponsor_registration")],
+            [InlineKeyboardButton(text="🔙 Назад / Артқа", callback_data="back_to_menu")]
         ]
     )
-    await message.answer(
-        "➕ <b>Стать спонсором в АА</b>\n\n"
-        "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
-        reply_markup=keyboard,
-        parse_mode="HTML"
+    text = (
+        "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другим."
+        if lang == 'ru'
+        else "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — бұл Қадамдардан өткен және тәжірибесімен бөлісуге дайын адам."
     )
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
-@router.message(F.text == "🤝 Спонсоры")
+@router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu_handler(event: Message | CallbackQuery):
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers_0")],
-        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")]
+        [InlineKeyboardButton(text="👦 Братья / Ағалар", callback_data="list_brothers_0")],
+        [InlineKeyboardButton(text="👧 Сестры / Әпкелер", callback_data="list_sisters_0")]
     ])
     if isinstance(event, Message):
-        await event.answer("👥 Выберите список:", reply_markup=keyboard)
+        await event.answer("👥 Выберите список / Тізімді таңдаңыз:", reply_markup=keyboard)
     else:
-        await event.message.edit_text("👥 Выберите список:", reply_markup=keyboard)
+        await event.message.edit_text("👥 Выберите список / Тізімді таңдаңыз:", reply_markup=keyboard)
         await event.answer()
 
 def get_schedule_menu_kb():
@@ -143,14 +204,16 @@ def get_schedule_menu_kb():
         [InlineKeyboardButton(text="📍 Другие локации", callback_data="s_other")]
     ])
 
-@router.message(F.text == "📅 Расписание")
+@router.message(F.text.in_({"📅 Расписание", "📅 Кесте"}))
 async def show_schedule_menu(message: types.Message):
-    await message.answer("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_schedule_menu_kb(), parse_mode="HTML")
+    lang = get_user_language(message.from_user.id)
+    title = "📅 <b>Расписание собраний АА</b>\nВыберите локацию:" if lang == 'ru' else "📅 <b>АА жиналыстарының кестесі</b>\nОрынды таңдаңыз:"
+    await message.answer(title, reply_markup=get_schedule_menu_kb(), parse_mode="HTML")
 
 @router.callback_query(F.data.startswith("s_"))
 async def callback_schedule(callback: types.CallbackQuery):
     data = callback.data
-    kb_back = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+    kb_back = [[InlineKeyboardButton(text="⬅️ Назад / Артқа", callback_data="s_back")]]
     
     help_text = "\n\nЕсли у вас есть вопросы, нужна поддержка — мы готовы помочь.\n📞 Горячая линия: +7 708 317 17 69"
 
@@ -206,29 +269,31 @@ async def callback_schedule(callback: types.CallbackQuery):
     
     await callback.answer()
 
-@router.message(F.text == "❓ Помощь")
+@router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
 async def help_section_handler(message: types.Message):
+    lang = get_user_language(message.from_user.id)
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
+            [InlineKeyboardButton(text="👤 Позвать живого служащего / Қызметкерді шақыру", callback_data="call_servant")]
         ]
     )
-    await message.answer(
-        "❓ <b>Помощь и поддержка</b>\n\n"
-        "Если вам тяжело или у вас срочный вопрос — вы можете задать мне в чате или позвать дежурного служащего.",
-        reply_markup=keyboard,
-        parse_mode="HTML"
+    text = (
+        "❓ <b>Помощь и поддержка</b>\n\nЕсли вам тяжело или у вас срочный вопрос — вы можете задать его мне в чате или позвать дежурного служащего."
+        if lang == 'ru'
+        else "❓ <b>Көмек пен қолдау</b>\n\nЕгер сізге қиын болса немесе шұғыл сұрағыңыз болса — оны маған чатта қоя аласыз немесе кезекші қызметкерді шақыра аласыз."
     )
+    await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu_callback(callback: types.CallbackQuery):
+    lang = get_user_language(callback.from_user.id)
     try:
         await callback.message.delete()
     except:
         pass
     await callback.message.answer(
-        "🏠 <b>Главное меню</b>",
-        reply_markup=get_main_menu_keyboard(),
+        TEXTS[lang]["menu"],
+        reply_markup=get_main_menu_keyboard(lang),
         parse_mode="HTML"
     )
     await callback.answer("Возврат в меню")
@@ -264,14 +329,17 @@ async def call_servant_callback(callback: types.CallbackQuery):
 @router.message(StateFilter(None), F.text)
 async def handle_beginner_questions(message: types.Message, state: FSMContext):
     # ЗАЩИТА: Бот отвечает ИИ-сообщениями ТОЛЬКО в личных чатах (ЛС). 
-    # В любых группах, супергруппах и каналах (включая чат Наурыз) он полностью молчит.
     if message.chat.type != "private":
         return
 
     menu_buttons = [
         "📖 Ежедневные размышления", "🙏 11 Шаг", 
         "➕ Стать спонсором", "🤝 Спонсоры", 
-        "📅 Расписание", "❓ Помощь", "🏠 Главное меню", "Главное меню"
+        "📅 Расписание", "❓ Помощь", "🏠 Главное меню", "Главное меню",
+        "📖 Күнделікті ой-толғаулар", "🙏 11 Қадам", 
+        "➕ Демеуші болу", "🤝 Демеушілер", 
+        "📅 Кесте", "❓ Көмек", "🏠 Басты мәзір", "Басты мәзір",
+        "🌐 Язык: Русский", "🌐 Тіл: Қазақша"
     ]
     if message.text in menu_buttons:
         return
@@ -281,7 +349,7 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
     
     servant_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
+            [InlineKeyboardButton(text="👤 Позвать живого служащего / Қызметкерді шақыру", callback_data="call_servant")]
         ]
     )
     await message.answer(ai_response, parse_mode="Markdown", reply_markup=servant_keyboard)

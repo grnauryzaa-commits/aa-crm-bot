@@ -1,7 +1,7 @@
 import os
 import aiohttp
 from services.knowledge_base import find_canonical_context
-from database import add_message_to_history, get_recent_history
+from database import add_message_to_history, get_recent_history, get_user_language
 
 async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:
     api_key = os.environ.get("GROQ_API_KEY")
@@ -23,7 +23,15 @@ async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:
         await add_message_to_history(user_id, "assistant", bot_reply)
         return bot_reply
 
-    # 3. Если это общий вопрос (не конкретный шаг/традиция/концепция), идем в Groq с жесткими правилами
+    # 3. Определяем язык пользователя (по умолчанию 'ru')
+    lang = get_user_language(user_id)
+    lang_instruction = (
+        "Отвечай строго на казахском языке. (Қазақ тілінде жауап бер.)" 
+        if lang == 'kk' 
+        else "Отвечай строго на русском языке."
+    )
+
+    # 4. Если это общий вопрос, идем в Groq с учетом языка пользователя
     history = await get_recent_history(user_id, limit=6)
 
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -35,6 +43,7 @@ async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:
     system_prompt = (
         "Ты — опытный член сообщества Анонимных Алкоголиков (АА) в Казахстане. "
         "Твоя задача — давать исключительно правдивые ответы по программе АА.\n\n"
+        f"{lang_instruction}\n\n"
         "ПРАВИЛА:\n"
         "1. Говори тепло, по-дружески (4–7 предложений).\n"
         "2. Никогда не признавайся, что ты бот.\n"
