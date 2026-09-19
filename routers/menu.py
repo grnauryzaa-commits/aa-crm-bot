@@ -134,6 +134,38 @@ async def set_language_callback(callback: types.CallbackQuery):
     await callback.message.answer(t["lang_changed"], reply_markup=get_main_menu_keyboard(lang))
     await callback.answer()
 
+@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу") | F.text.contains("Стать спонсором"))
+async def become_sponsors_menu_direct(message: Message, state: FSMContext):
+    await state.clear()
+    user_id = message.from_user.id
+    
+    if "Демеуші" in message.text:
+        await set_user_language(user_id, "kk")
+        lang = "kk"
+    else:
+        lang = await get_user_language(user_id)
+        
+    titles = {
+        "ru": "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
+        "kk": "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және басқалармен тәжірибе бөлісуге дайын адам."
+    }
+    btn_fills = {
+        "ru": "📝 Заполнить анкету спонсора",
+        "kk": "📝 Демеуші сауалнамасын толтыру"
+    }
+    btn_backs = {
+        "ru": "🔙 Назад в меню",
+        "kk": "🔙 Мәзірге оралу"
+    }
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=btn_fills[lang], callback_data="start_sponsor_registration")],
+            [InlineKeyboardButton(text=btn_backs[lang], callback_data="back_to_menu")]
+        ]
+    )
+    await message.answer(titles[lang], reply_markup=keyboard, parse_mode="HTML")
+
 @router.message(F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}))
 async def show_daily_reflection(message: types.Message):
     today = datetime.now()
@@ -211,59 +243,41 @@ async def show_schedule_menu(message: types.Message):
 async def callback_schedule(callback: types.CallbackQuery):
     data = callback.data
     kb_back = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
-    
     help_text = "\n\nЕсли у вас есть вопросы, нужна поддержка — мы готовы помочь.\n📞 Горячая линия: +7 708 317 17 69"
 
     if data == "s_back":
         await callback.message.edit_text("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_schedule_menu_kb(), parse_mode="HTML")
-    
     elif data == "s_online":
         text = ("🌐 <b>ОНЛАЙН</b>\n\n• <b>Пробуждение</b>: Вт, Чт, Сб 21:00\n<a href='https://us06web.zoom.us/j/82036099070'>Zoom</a> | Пароль: +77754565358\n\n"
                 "• <b>Бірлік (каз)</b>: Чт 21:00\n<a href='https://us06web.zoom.us/j/7473499478'>Zoom</a> | Пароль: +77074337408\n\n"
                 "• <b>Шаг за шагом</b>: Вт 19:00\n<a href='https://t.me/+JqgMpZCz_fY1OTVi'>Telegram</a>" + help_text)
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_back), parse_mode="HTML", disable_web_page_preview=True)
-
     elif data == "s_zhub":
-        text = ("🏢 <b>Жубанова 3а</b> (между Алтынсарина и Отеген Батыра)\n301 кабинет, 3 этаж (вход справа от гостиницы \"Достар\")\n\n"
+        text = ("🏢 <b>Жубанова 3а</b> (между Алтынсарина и Отеген Батыра)\n301 кабинет, 3 этаж\n\n"
                 "• <b>Виктория</b>: Вт, Чт 19:30, Сб 19:00\n• <b>Шапагат (каз)</b>: Пн, Ср 19:00, Сб 17:00\n"
                 "• <b>Чайхана (Новички)</b>: Вс 11:00\n• <b>Женский клуб</b>: Вс 13:00" + help_text)
         kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047375041535/76.857015,43.236908")],
               [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-
     elif data == "s_zenk":
-        text = ("🏢 <b>Зенкова 24 (Дом Офицеров)</b>\n(вход с ул. Калдаякова, по железной лестнице наверх)\n\n"
-                "• <b>8 марта</b>: Ежедневно 19:00, Вт/Чт 12:00\n• <b>АлмА (Женская)</b>: Сб 12:00\n"
-                "• <b>ААА (Мужская)</b>: Сб 17:00\n• <b>ВДА</b>: уточнять по контактам" + help_text)
+        text = ("🏢 <b>Зенкова 24 (Дом Офицеров)</b>\n\n• <b>8 марта</b>: Ежедневно 19:00, Вт/Чт 12:00\n• <b>АлмА (Женская)</b>: Сб 12:00\n• <b>ААА (Мужская)</b>: Сб 17:00" + help_text)
         kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/70000001112488343")],
               [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-
     elif data == "s_tim":
-        text = ("🏢 <b>Тимирязева 42, корпус 23, каб 102</b>\n\n"
-                "• <b>Друзья Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00" + help_text)
+        text = ("🏢 <b>Тимирязева 42, корпус 23, каб 102</b>\n\n• <b>Друзья Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00" + help_text)
         kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047374971407/76.904347,43.217837")],
               [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-
     elif data == "s_kaskelen":
-        text = ("🏢 <b>ТД «Нур-Жанат» (г. Каскелен)</b>\n\n"
-                "• <b>Группа «Туран»</b>: Пн, Ср, Сб 17:00–18:15" + help_text)
+        text = ("🏢 <b>ТД «Нур-Жанат» (г. Каскелен)</b>\n\n• <b>Группа «Туран»</b>: Пн, Ср, Сб 17:00–18:15" + help_text)
         kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/70030076201734271/76.642795,43.201247")],
               [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-
     elif data == "s_other":
-        text = ("📍 <b>Другие локации</b>\n\n• <b>Аксай</b> (Райымбека 493): Вс 13:00\n"
-                "• <b>НОВЫЕ ОЧКИ</b> (Жибек Жолы 64): Пн, Ср, Пт 19:00, Сб 14:00\n"
-                "• <b>Боралдай</b> (Курчатова 13а): Сб 17:00\n• <b>Талхиз (Талгар)</b> (Муратбаева 26): Пн, Чт, Пт 19:00\n\n"
-                "• <b>Турксиб</b>: Уточнять по тел +77478601105\nВремя: Вт, Чт 19:00-20:30; Вс 17:00-18:30" + help_text)
-        kb = [[InlineKeyboardButton(text="📍 Новые Очки (2GIS)", url="https://2gis.kz/almaty/geo/9430047374988153/76.950690,43.262199")],
-              [InlineKeyboardButton(text="📍 Турксиб (2GIS)", url="https://2gis.kz/almaty/geo/9430047374991567/76.955136,43.330053")],
-              [InlineKeyboardButton(text="📍 Талхиз (2GIS)", url="https://2gis.kz/almaty/geo/70000001045475756/77.234246,43.317702")],
-              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
+        text = ("📍 <b>Другие локации</b>\n\n• <b>Аксай</b>: Вс 13:00\n• <b>НОВЫЕ ОЧКИ</b>: Пн, Ср, Пт 19:00, Сб 14:00\n• <b>Боралдай</b>: Сб 17:00\n• <b>Талхиз (Талгар)</b>: Пн, Чт, Пт 19:00" + help_text)
+        kb = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-    
     await callback.answer()
 
 @router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
@@ -307,11 +321,7 @@ async def call_servant_callback(callback: types.CallbackQuery):
 
     for servant_id in SERVANT_CHAT_IDS:
         try:
-            await callback.bot.send_message(
-                chat_id=servant_id,
-                text=alert_text,
-                parse_mode="HTML"
-            )
+            await callback.bot.send_message(chat_id=servant_id, text=alert_text, parse_mode="HTML")
         except Exception as e:
             logging.error(f"Не удалось отправить уведомление служащему: {e}")
 

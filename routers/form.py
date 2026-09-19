@@ -2,7 +2,7 @@ from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database import get_user_language, set_user_language
+from database import get_user_language
 from config import SERVANT_CHAT_IDS
 import psycopg2
 from config import DATABASE_URL
@@ -20,9 +20,6 @@ class SponsorForm(StatesGroup):
 
 FORM_TEXTS = {
     "ru": {
-        "menu_title": "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
-        "btn_fill": "📝 Заполнить анкету спонсора",
-        "btn_back": "🔙 Назад в меню",
         "q_name": "👤 <b>Напиши свое имя:</b>",
         "q_city": "📍 <b>В каком городе ты находишься?</b>",
         "q_sobriety": "📅 <b>Укажи дату своей трезвости</b> (например, <i>15.05.2020</i> или просто год):",
@@ -46,9 +43,6 @@ FORM_TEXTS = {
         )
     },
     "kk": {
-        "menu_title": "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және басқалармен тәжірибе бөлісуге дайын адам.",
-        "btn_fill": "📝 Демеуші сауалнамасын толтыру",
-        "btn_back": "🔙 Мәзірге оралу",
         "q_name": "👤 <b>Атыңызды жазыңыз:</b>",
         "q_city": "📍 <b>Қай қалада тұрасыз?</b>",
         "q_sobriety": "📅 <b>Сауығу күнін немесе жылын жазыңыз</b> (мысалы: <i>15.05.2020</i> немесе тек жыл):",
@@ -96,27 +90,6 @@ def save_sponsor_to_db(user_id, name, city, sobriety_date, sponsor_name, phone, 
         conn.close()
     except Exception as e:
         logging.error(f"Ошибка сохранения спонсора в базу: {e}")
-
-@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу") | F.text.contains("Стать спонсором"))
-async def become_sponsors_menu(message: Message, state: FSMContext):
-    await state.clear()
-    user_id = message.from_user.id
-    
-    if "Демеуші" in message.text:
-        await set_user_language(user_id, "kk")
-        lang = "kk"
-    else:
-        lang = await get_user_language(user_id)
-        
-    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=t["btn_fill"], callback_data="start_sponsor_registration")],
-            [InlineKeyboardButton(text=t["btn_back"], callback_data="back_to_menu")]
-        ]
-    )
-    await message.answer(t["menu_title"], reply_markup=keyboard, parse_mode="HTML")
 
 @router.callback_query(F.data == "start_sponsor_registration")
 async def start_sponsor_form(callback: CallbackQuery, state: FSMContext):
