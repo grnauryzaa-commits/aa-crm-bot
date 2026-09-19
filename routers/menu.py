@@ -39,7 +39,10 @@ TEXTS = {
         "servant_success": "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и свяжется с вами в ближайшее время.",
         "step11_title": "🙏 <b>11 Шаг программы АА</b>\n\nВыберите нужную практику:",
         "step11_morning": "🌅 Утренняя молитва",
-        "step11_evening": "🌙 Вечерняя молитва"
+        "step11_evening": "🌙 Вечерняя молитва",
+        "sponsor_menu_title": "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
+        "sponsor_btn_fill": "📝 Заполнить анкету спонсора",
+        "back_menu": "🔙 Назад в меню"
     },
     "kk": {
         "start_greeting": (
@@ -66,7 +69,10 @@ TEXTS = {
         "servant_success": "🙏 Өтінішіңіз қабылданды. Қауымдастықтың кезекші қызметкері хабардар етілді және жақын арада сізбен байланысады.",
         "step11_title": "🙏 <b>АА бағдарламасының 11-ші қадамы</b>\n\nҚажетті тәжірибені таңдаңыз:",
         "step11_morning": "🌅 Таңғы дұға",
-        "step11_evening": "🌙 Кешкі дұға"
+        "step11_evening": "🌙 Кешкі дұға",
+        "sponsor_menu_title": "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — бұл Қадамдардан өткен және басқалармен тәжірибе бөлісуге дайын адам.",
+        "sponsor_btn_fill": "📝 Демеуші сауалнамасын толтыру",
+        "back_menu": "🔙 Мәзірге оралу"
     }
 }
 
@@ -180,18 +186,15 @@ async def send_evening_callback(callback: types.CallbackQuery):
 
 @router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
 async def become_sponsors_menu(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    t = TEXTS[lang]
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Заполнить анкету спонсора", callback_data="start_sponsor_registration")],
-            [InlineKeyboardButton(text="🔙 Назад в меню", callback_data="back_to_menu")]
+            [InlineKeyboardButton(text=t["sponsor_btn_fill"], callback_data="start_sponsor_registration")],
+            [InlineKeyboardButton(text=t["back_menu"], callback_data="back_to_menu")]
         ]
     )
-    await message.answer(
-        "➕ <b>Стать спонсором в АА</b>\n\n"
-        "Спонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+    await message.answer(t["sponsor_menu_title"], reply_markup=keyboard, parse_mode="HTML")
 
 @router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
 @router.callback_query(F.data == "menu_sponsors")
