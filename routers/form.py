@@ -97,7 +97,7 @@ def save_sponsor_to_db(user_id, name, city, sobriety_date, sponsor_name, phone, 
     except Exception as e:
         logging.error(f"Ошибка сохранения спонсора в базу: {e}")
 
-@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
+@router.message(F.text.contains("Демеуші болу") | F.text.contains("Стать спонсором"))
 async def become_sponsors_menu(message: Message, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id
