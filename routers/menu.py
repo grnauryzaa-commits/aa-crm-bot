@@ -95,7 +95,14 @@ def format_reflection(text, today):
         if filtered and f"{today.day}" in filtered[0] and len(filtered[0]) < 25:
             filtered.pop(0)
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
-    return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape('\n\n'.join(filtered))}"
+    
+    # Исправлено: объединение строк вынесено наружу, бэкслешей внутри f-строки нет
+    joined_text = '\n\n'.join(filtered)
+    escaped_body = html.escape(joined_text)
+    day_str = str(today.day)
+    month_str = months[today.month - 1]
+    
+    return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{day_str} {month_str}</b>\n\n{escaped_body}"
 
 @router.message(Command("start"))
 @router.message(F.text.in_({"🏠 Главное меню", "Главное меню", "🏠 Басты мәзір", "Басты мәзір"}))
@@ -227,7 +234,6 @@ async def call_servant(callback: CallbackQuery):
     user_link = f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
     username = f" (@{user.username})" if user.username else ""
     
-    # Сформировано без слэшей внутри f-строки
     alert_text = (
         "🚨 <b>Новый запрос о помощи!</b>\n\n"
         f"Пользователь: {user_link}{username}\n"
