@@ -215,7 +215,7 @@ async def help_section_handler(message: types.Message):
     )
     await message.answer(
         "❓ <b>Помощь и поддержка</b>\n\n"
-        "Если вам тяжело или у вас срочный вопрос — вы можете задать его мне в чате или позвать дежурного служащего.",
+        "Если вам тяжело или у вас срочный вопрос — вы можете задать мне в чате или позвать дежурного служащего.",
         reply_markup=keyboard,
         parse_mode="HTML"
     )
@@ -263,6 +263,11 @@ async def call_servant_callback(callback: types.CallbackQuery):
 
 @router.message(StateFilter(None), F.text)
 async def handle_beginner_questions(message: types.Message, state: FSMContext):
+    # ЗАЩИТА: Бот отвечает ИИ-сообщениями ТОЛЬКО в личных чатах (ЛС). 
+    # В любых группах, супергруппах и каналах (включая чат Наурыз) он полностью молчит.
+    if message.chat.type != "private":
+        return
+
     menu_buttons = [
         "📖 Ежедневные размышления", "🙏 11 Шаг", 
         "➕ Стать спонсором", "🤝 Спонсоры", 
