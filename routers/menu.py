@@ -65,6 +65,28 @@ def get_main_menu_keyboard(lang='ru'):
         input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇"
     )
 
+def clean_reflection_text(raw_text: str) -> str:
+    """Чистит текст размышлений от ссылок, шапок сайтов и мусора соцсетей"""
+    if not raw_text:
+        return ""
+    
+    # Убираем ссылки (www.Mos-Nach.ru, http и т.д.)
+    text = re.sub(r'https?://\S+|www\.\S+', '', raw_text)
+    
+    # Убираем служебные строки АА-сайтов
+    text = re.sub(r'Анонимные\s+Алкоголики\.', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'Группа\s+["«].*?["»].*?(?=\n|$)', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'Ежедневные\s+Размышления\s+на\s+\d+\s+\w+\.?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'Сегодня\s+\d+\s+\w+\.?', '', text, flags=re.IGNORECASE)
+    
+    # Убираем соцсети и блок "Поделиться"
+    text = re.sub(r'Поделиться:.*', '', text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'\b(Twitter|Facebook|Vkontakte|WhatsApp|Telegram|EMail)\b', '', text, flags=re.IGNORECASE)
+    
+    # Убираем пустые строки и лишние пробелы
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return "\n".join(lines)
+
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
@@ -103,7 +125,6 @@ async def show_daily_reflection(message: types.Message):
         def fetch_reflection():
             conn = psycopg2.connect(DATABASE_URL)
             cur = conn.cursor()
-            # Проверяем наличие колонок title и text
             cur.execute("SELECT title, text FROM reflections_archive WHERE day = %s AND month = %s", (today.day, today.month))
             row = cur.fetchone()
             cur.close()
@@ -114,14 +135,7 @@ async def show_daily_reflection(message: types.Message):
 
         if row:
             title, raw_text = row[0], row[1]
-            
-            # Тщательная очистка текста от мусора (соцсети, дубликаты)
-            if raw_text:
-                cleaned_text = re.sub(r'Поделиться:.*?(?=Ежедневные|Сегодня|$)', '', raw_text, flags=re.DOTALL | re.IGNORECASE)
-                cleaned_text = re.sub(r'(Twitter|Facebook|Vkontakte|WhatsApp|Telegram|EMail)', '', cleaned_text, flags=re.IGNORECASE)
-                cleaned_text = "\n".join([line.strip() for line in cleaned_text.splitlines() if line.strip()])
-            else:
-                cleaned_text = ""
+            cleaned_text = clean_reflection_text(raw_text)
 
             header = "📖 <b>Ежедневное размышление</b>" if lang == 'ru' else "📖 <b>Күнделікті ой-толғау</b>"
             text = f"{header}\n\n"
