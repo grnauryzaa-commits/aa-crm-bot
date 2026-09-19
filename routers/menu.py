@@ -27,12 +27,11 @@ TEXTS = {
         "sponsors_title": "👥 Выберите список:",
         "schedule_title": "📅 <b>Расписание собраний АА</b>\nВыберите локацию:",
         "help_title": "❓ <b>Помощь и поддержка</b>\n\nЕсли вам тяжело или у вас срочный вопрос — вы можете задать его мне в чате или позвать дежурного служащего.",
-        "servant_alert": "🚨 <b>Новый запрос о помощи!</b>\n\nПользователь: {user_link}{username}\nID: <code>{user.id}</code>\nНажал кнопку «Позвать живого служащего».",
         "servant_success": "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и свяжется с вами в ближайшее время.",
         "help_line": "\n\nЕсли у вас есть вопросы, нужна поддержка — мы готовы помочь.\n📞 Горячая линия: +7 708 317 17 69"
     },
     "kk": {
-        "start": "Қош келдіңіз! Анонимді Алкоголиктер қауымдастығының ботына қош келдіңіз.\n\n🤖 Сіз маған АА бағдарламасы туралой кез келген сұрақты өз сөзіңізбен қоя аласыз, мен көмектесуге тырысамын.\n\n👇 <b>Басты мәзір әрқашан экранның төменгі бөлігінде орналасқан.</b>",
+        "start": "Қош келдіңіз! Анонимді Алкоголиктер қауымдастығының ботына қош келдіңіз.\n\n🤖 Сіз маған АА бағдарламасы туралы кез келген сұрақты өз сөзіңізбен қоя аласыз, мен көмектесуге тырысамын.\n\n👇 <b>Басты мәзір әрқашан экранның төменгі бөлігінде орналасқан.</b>",
         "menu": "🏠 <b>Басты мәзір</b>\n\nТөменден қажетті бөлімді таңдаңыз 👇",
         "choose_lang": "🌐 Тілді таңдаңыз / Выберите язык:",
         "lang_changed": "✅ Тіл қазақ тіліне өзгертілді!",
@@ -44,7 +43,6 @@ TEXTS = {
         "sponsors_title": "👥 Тізімді таңдаңыз:",
         "schedule_title": "📅 <b>АА жиналыстарының кестесі</b>\nОрынды таңдаңыз:",
         "help_title": "❓ <b>Көмек және қолдау</b>\n\nЕгер сізге қиын болса немесе шұғыл сұрағыңыз болса — оны маған чатта қоюға немесе кезекші қызметкерді шақыруға болады.",
-        "servant_alert": "🚨 <b>Жаңа көмек сұрау!</b>\n\nПайдаланушы: {user_link}{username}\nID: <code>{user.id}</code>\n«Тірі қызметкерді шақыру» түймесін басты.",
         "servant_success": "🙏 Өтінішіңіз қабылданды. Қауымдастықтың кезекші қызметкері хабардар етілді және жақын арада сізбен байланысады.",
         "help_line": "\n\nЕгер сізде сұрақтар туындаса, қолдау қажет болса — біз көмектесуге дайынбыз.\n📞 Жедел желі: +7 708 317 17 69"
     }
@@ -229,10 +227,24 @@ async def call_servant(callback: CallbackQuery):
     user_link = f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
     username = f" (@{user.username})" if user.username else ""
     
-    alert_text = TEXTS[lang]["servant_alert"].format(user_link=user_link, username=username, user=user)
+    # Сформировано без слэшей внутри f-строки
+    alert_text = (
+        "🚨 <b>Новый запрос о помощи!</b>\n\n"
+        f"Пользователь: {user_link}{username}\n"
+        f"ID: <code>{user.id}</code>\n"
+        "Нажал кнопку «Позвать живого служащего»."
+    ) if lang == 'ru' else (
+        "🚨 <b>Жаңа көмек сұрау!</b>\n\n"
+        f"Пайдаланушы: {user_link}{username}\n"
+        f"ID: <code>{user.id}</code>\n"
+        "«Тірі қызметкерді шақыру» түймесін басты."
+    )
+
     for sid in SERVANT_CHAT_IDS:
-        try: await callback.bot.send_message(chat_id=sid, text=alert_text, parse_mode="HTML")
-        except Exception as e: logging.error(f"Ошибка отправки служащему {sid}: {e}")
+        try:
+            await callback.bot.send_message(chat_id=sid, text=alert_text, parse_mode="HTML")
+        except Exception as e:
+            logging.error(f"Ошибка отправки служащему {sid}: {e}")
 
     await callback.message.answer(TEXTS[lang]["servant_success"])
     await callback.answer()
