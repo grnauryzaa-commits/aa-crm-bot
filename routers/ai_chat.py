@@ -4,13 +4,11 @@ from ai_helper import ask_ai_for_beginner
 
 router = Router()
 
-# ID канала/чата Наурыз, в который бот должен только слать рассылку, но не отвечать на обычные сообщения
-NAURYZ_CHAT_ID = -1002140833802
-
 @router.message(F.text)
 async def handle_beginner_questions(message: types.Message):
-    # ЗАЩИТА: Если сообщение прилетело в общий чат Наурыза, полностью игнорируем его
-    if message.chat.id == NAURYZ_CHAT_ID:
+    # ЖЕСТКАЯ ЗАЩИТА: Бот отвечает ТОЛЬКО в личных сообщениях (ЛС). 
+    # В любых группах, супергруппах и каналах он полностью молчит на любые тексты.
+    if message.chat.type != "private":
         return
 
     # Дополнительная страховка на случай попадания служебных текстов
