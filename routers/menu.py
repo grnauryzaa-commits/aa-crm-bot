@@ -2,7 +2,6 @@ from datetime import datetime
 import logging
 import psycopg2
 import asyncio
-import re
 
 from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -66,7 +65,7 @@ def get_main_menu_keyboard(lang='ru'):
     )
 
 def clean_reflection_text(raw_text: str) -> str:
-    """Безопасная очистка: убираем только явный мусор, сохраняя сам текст"""
+    """Очистка текста размышлений от мусора и ссылок сайта"""
     if not raw_text:
         return ""
     
@@ -75,7 +74,6 @@ def clean_reflection_text(raw_text: str) -> str:
     
     for line in lines:
         line_str = line.strip()
-        # Пропускаем строки с мусором и ссылками
         if not line_str:
             continue
         if "www.Mos-Nach.ru" in line_str or "http://" in line_str or "https://" in line_str:
@@ -154,22 +152,40 @@ async def show_daily_reflection(message: types.Message):
         msg = "Произошла ошибка при получении размышлений." if lang == 'ru' else "Ой-толғауларды алу кезінде қате орын алды."
         await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
 
+# ЗАГЛУШКИ/ХЕНДЛЕРЫ ДЛЯ ОСТАЛЬНЫХ КНОПОК, ЧТОБЫ ОНИ НЕ ВИСЕЛИ
+@router.message(F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"}))
+async def btn_step11_handler(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    msg = "Раздел 11 Шага в разработке или подключается." if lang == 'ru' else "11 Қадам бөлімі әзірленуде."
+    await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+
+@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
+async def btn_sponsor_handler(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    msg = "Раздел спонсорства." if lang == 'ru' else "Демеушілік бөлімі."
+    await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+
+@router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
+async def btn_sponsors_handler(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    msg = "Список спонсоров." if lang == 'ru' else "Демеушілер тізімі."
+    await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+
+@router.message(F.text.in_({"📅 Расписание", "📅 Кесте"}))
+async def btn_schedule_handler(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    msg = "Расписание групп." if lang == 'ru' else "Топтар кестесі."
+    await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+
+@router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
+async def btn_help_handler(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    msg = "Помощь по использованию бота." if lang == 'ru' else "Боты қолдану бойынша көмек."
+    await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+
 @router.message(StateFilter(None), F.text)
 async def handle_beginner_questions(message: types.Message, state: FSMContext):
     if message.chat.type != "private":
-        return
-
-    # ВАЖНО: Добавили все кнопки меню, чтобы ИИ не перехватывал их нажатия и они работали в других роутерах!
-    menu_buttons = [
-        "📖 Ежедневные размышления", "🙏 11 Шаг", 
-        "➕ Стать спонсором", "🤝 Спонсоры", 
-        "📅 Расписание", "❓ Помощь", "🏠 Главное меню", "Главное меню",
-        "📖 Күнделікті ой-толғаулар", "🙏 11 Қадам", 
-        "➕ Демеуші болу", "🤝 Демеушілер", 
-        "📅 Кесте", "❓ Көмек", "🏠 Басты мәзір", "Басты мәзір",
-        "🌐 Язык: Русский", "🌐 Тіл: Қазақша"
-    ]
-    if message.text in menu_buttons:
         return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
