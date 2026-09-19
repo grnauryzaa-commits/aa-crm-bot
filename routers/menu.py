@@ -30,6 +30,13 @@ TEXTS = {
         "btn_schedule": "📅 Расписание",
         "btn_help": "❓ Помощь",
         "btn_lang": "🌐 Язык: Русский",
+        "sponsors_title": "👥 Выберите список:",
+        "sponsor_brothers": "👦 Братья",
+        "sponsor_sisters": "👧 Сестры",
+        "help_title": "❓ <b>Помощь и поддержка</b>\n\nЕсли вам тяжело или у вас срочный вопрос — вы можете задать его мне в чате или позвать дежурного служащего.",
+        "help_btn": "👤 Позвать живого служащего",
+        "servant_alert": "🚨 <b>Новый запрос о помощи!</b>\n\nПользователь: {user_link}{username_text}\nID: <code>{user_id}</code>\nНажал кнопку «Позвать живого служащего».",
+        "servant_success": "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и свяжется с вами в ближайшее время."
     },
     "kk": {
         "start_greeting": (
@@ -47,6 +54,13 @@ TEXTS = {
         "btn_schedule": "📅 Кесте",
         "btn_help": "❓ Көмек",
         "btn_lang": "🌐 Тіл: Қазақша",
+        "sponsors_title": "👥 Тізімді таңдаңыз:",
+        "sponsor_brothers": "👦 Бауырлар",
+        "sponsor_sisters": "👧 Әпкелер",
+        "help_title": "❓ <b>Көмек және қолдау</b>\n\nЕгер сізге қиын болса немесе шұғыл сұрағыңыз болса — оны маған чатта қоюға немесе кезекші қызметкерді шақыруға болады.",
+        "help_btn": "👤 Тірі қызметкерді шақыру",
+        "servant_alert": "🚨 <b>Жаңа көмек сұрау!</b>\n\nПайдаланушы: {user_link}{username_text}\nID: <code>{user_id}</code>\n«Тірі қызметкерді шақыру» түймесін басты.",
+        "servant_success": "🙏 Өтінішіңіз қабылданды. Қауымдастықтың кезекші қызметкері хабардар етілді және жақын арада сізбен байланысады."
     }
 }
 
@@ -179,14 +193,16 @@ async def become_sponsors_menu(message: types.Message):
 @router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu_handler(event: Message | CallbackQuery):
+    lang = await get_user_language(event.from_user.id)
+    t = TEXTS[lang]
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👦 Братья", callback_data="list_brothers_0")],
-        [InlineKeyboardButton(text="👧 Сестры", callback_data="list_sisters_0")]
+        [InlineKeyboardButton(text=t["sponsor_brothers"], callback_data="list_brothers_0")],
+        [InlineKeyboardButton(text=t["sponsor_sisters"], callback_data="list_sisters_0")]
     ])
     if isinstance(event, Message):
-        await event.answer("👥 Выберите список:", reply_markup=keyboard)
+        await event.answer(t["sponsors_title"], reply_markup=keyboard)
     else:
-        await event.message.edit_text("👥 Выберите список:", reply_markup=keyboard)
+        await event.message.edit_text(t["sponsors_title"], reply_markup=keyboard)
         await event.answer()
 
 def get_schedule_menu_kb():
@@ -264,17 +280,14 @@ async def callback_schedule(callback: types.CallbackQuery):
 
 @router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
 async def help_section_handler(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    t = TEXTS[lang]
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
+            [InlineKeyboardButton(text=t["help_btn"], callback_data="call_servant")]
         ]
     )
-    await message.answer(
-        "❓ <b>Помощь и поддержка</b>\n\n"
-        "Если вам тяжело или у вас срочный вопрос — вы можете задать его мне в чате или позвать дежурного служащего.",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+    await message.answer(t["help_title"], reply_markup=keyboard, parse_mode="HTML")
 
 @router.callback_query(F.data == "back_to_menu")
 async def back_to_menu_callback(callback: types.CallbackQuery):
@@ -293,14 +306,15 @@ async def back_to_menu_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "call_servant")
 async def call_servant_callback(callback: types.CallbackQuery):
     user = callback.from_user
+    lang = await get_user_language(user.id)
+    t = TEXTS[lang]
     user_link = f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
     username_text = f" (@{user.username})" if user.username else ""
     
-    alert_text = (
-        f"🚨 <b>Новый запрос о помощи!</b>\n\n"
-        f"Пользователь: {user_link}{username_text}\n"
-        f"ID: <code>{user.id}</code>\n"
-        f"Нажал кнопку «Позвать живого служащего»."
+    alert_text = t["servant_alert"].format(
+        user_link=user_link, 
+        username_text=username_text, 
+        user_id=user.id
     )
 
     for servant_id in SERVANT_CHAT_IDS:
@@ -313,9 +327,7 @@ async def call_servant_callback(callback: types.CallbackQuery):
         except Exception as e:
             logging.error(f"Не удалось отправить уведомление служащему {servant_id}: {e}")
 
-    await callback.message.answer(
-        "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и свяжется с вами в ближайшее время."
-    )
+    await callback.message.answer(t["servant_success"])
     await callback.answer()
 
 @router.message(StateFilter(None), F.text)
