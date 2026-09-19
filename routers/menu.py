@@ -328,7 +328,6 @@ async def call_servant_callback(callback: types.CallbackQuery):
 
 @router.message(StateFilter(None), F.text)
 async def handle_beginner_questions(message: types.Message, state: FSMContext):
-    # ЗАЩИТА: Бот отвечает ИИ-сообщениями ТОЛЬКО в личных чатах (ЛС). 
     if message.chat.type != "private":
         return
 
