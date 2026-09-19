@@ -3,16 +3,15 @@ import logging
 import asyncio
 from config import DATABASE_URL as DB_URL
 
-# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
 async def init_db():
-    logging.info("🚀 Запуск принудительного обновления структуры базы данных (добавление пола, истории диалогов и размышлений)...")
+    logging.info("🚀 Запуск инициализации структуры базы данных...")
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         
-        # 0. СОЗДАНИЕ ТАБЛИЦЫ USERS (ДЛЯ ХРАНЕНИЯ ЯЗЫКА ПОЛЬЗОВАТЕЛЕЙ)
+        # Таблица пользователей и языков
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id BIGINT PRIMARY KEY,
@@ -20,7 +19,7 @@ async def init_db():
             );
         """)
 
-        # 1. СОЗДАНИЕ ТАБЛИЦЫ SPONSORS
+        # Таблица спонсоров
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsors (
                 user_id BIGINT UNIQUE PRIMARY KEY,
@@ -35,7 +34,7 @@ async def init_db():
             );
         """)
         
-        # 2. СОЗДАНИЕ ТАБЛИЦЫ ЧЕРНОВИКОВ (БЕЗОПАСНОЕ)
+        # Таблица черновиков анкет спонсоров
         cur.execute("""
             CREATE TABLE IF NOT EXISTS sponsor_drafts (
                 user_id BIGINT PRIMARY KEY,
@@ -50,14 +49,14 @@ async def init_db():
             );
         """)
 
-        # ПРИНУДИТЕЛЬНО ДОБАВЛЯЕМ КОЛОНКИ, ЕСЛИ ИХ НЕТ (ДЛЯ БЕЗОПАСНОГО ОБНОВЛЕНИЯ)
+        # Безопасное добавление колонок
         cur.execute("ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS gender VARCHAR(10);")
         cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS gender VARCHAR(10);")
         cur.execute("ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS program_info TEXT;")
         cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS program_info TEXT;")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'ru';")
         
-        # 3. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ЕЖЕДНЕВНЫХ РАЗМЫШЛЕНИЙ
+        # Таблица архива размышлений
         cur.execute("""
             CREATE TABLE IF NOT EXISTS reflections_archive (
                 day INT,
@@ -68,7 +67,7 @@ async def init_db():
             );
         """)
 
-        # 4. СОЗДАНИЕ ТАБЛИЦЫ ДЛЯ ИСТОРИИ ДИАЛОГОВ (В POSTGRESQL НАДЕЖНО НАВСЕГДА)
+        # Таблица истории диалогов с ИИ
         cur.execute("""
             CREATE TABLE IF NOT EXISTS dialog_history (
                 id SERIAL PRIMARY KEY,
@@ -82,18 +81,13 @@ async def init_db():
         conn.commit()
         cur.close()
         conn.close()
-
-        logging.info("🎉 СТРУКТУРА БАЗЫ ДАННЫХ ИСПРАВЛЕНА И ГОТОВА К РАБОТЕ!")
+        logging.info("🎉 БАЗА ДАННЫХ УСПЕШНО ИНИЦИАЛИЗИРОВАНА!")
         
     except Exception as e:
-        logging.error(f"❌ Критическая ошибка инициализации БД: {e}")
+        logging.error(f"❌ Ошибка инициализации БД: {e}")
         raise e
 
-
-# =====================================================================
-# ФУНКЦИИ УПРАВЛЕНИЯ ЯЗЫКОМ ПОЛЬЗОВАТЕЛЯ
-# =====================================================================
-
+# Функции языка
 def _get_user_language_sync(user_id: int) -> str:
     try:
         conn = psycopg2.connect(DB_URL)
@@ -104,13 +98,11 @@ def _get_user_language_sync(user_id: int) -> str:
         conn.close()
         return row[0] if row and row[0] in ['ru', 'kk'] else 'ru'
     except Exception as e:
-        logging.error(f"Ошибка получения языка из БД: {e}")
+        logging.error(f"Ошибка получения языка: {e}")
         return 'ru'
 
 async def get_user_language(user_id: int) -> str:
-    """Получает язык пользователя из базы данных (по умолчанию 'ru')."""
     return await asyncio.to_thread(_get_user_language_sync, user_id)
-
 
 def _set_user_language_sync(user_id: int, lang: str):
     try:
@@ -124,17 +116,12 @@ def _set_user_language_sync(user_id: int, lang: str):
         cur.close()
         conn.close()
     except Exception as e:
-        logging.error(f"Ошибка сохранения языка в БД: {e}")
+        logging.error(f"Ошибка сохранения языка: {e}")
 
 async def set_user_language(user_id: int, lang: str):
-    """Сохраняет или обновляет выбранный язык пользователя в базе данных."""
     await asyncio.to_thread(_set_user_language_sync, user_id, lang)
 
-
-# =====================================================================
-# ФУНКЦИИ ВЗАИМОДЕЙСТВИЯ С БАЗОЙ ДАННЫХ (СПОНСОРЫ И ЧЕРНОВИКИ)
-# =====================================================================
-
+# Остальные функции базы данных
 def _get_sponsor_sync(user_id):
     try:
         conn = psycopg2.connect(DB_URL)
@@ -145,13 +132,10 @@ def _get_sponsor_sync(user_id):
         conn.close()
         return res
     except Exception as e:
-        logging.error(f"Ошибка выполнения _get_sponsor_sync: {e}")
         return None
 
 async def get_sponsor_by_tg_id(user_id):
-    """Проверяет, есть ли пользователь в базе активных спонсоров"""
     return await asyncio.to_thread(_get_sponsor_sync, user_id)
-
 
 def _save_draft_sync(user_id, data):
     conn = psycopg2.connect(DB_URL)
@@ -160,78 +144,44 @@ def _save_draft_sync(user_id, data):
         INSERT INTO sponsor_drafts (user_id, name, gender, age, sobriety, city, program_info, username, phone)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (user_id) DO UPDATE SET
-            name = EXCLUDED.name, 
-            gender = EXCLUDED.gender,
-            age = EXCLUDED.age, 
-            sobriety = EXCLUDED.sobriety,
-            city = EXCLUDED.city, 
-            program_info = EXCLUDED.program_info,
-            username = EXCLUDED.username, 
-            phone = EXCLUDED.phone;
-    """, (
-        user_id, 
-        data.get('name'), 
-        data.get('gender'),
-        int(data.get('age', 0)),
-        data.get('sobriety'), 
-        data.get('city'), 
-        data.get('program_info'),
-        data.get('username'), 
-        data.get('phone')
-    ))
+            name = EXCLUDED.name, gender = EXCLUDED.gender, age = EXCLUDED.age, 
+            sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, program_info = EXCLUDED.program_info,
+            username = EXCLUDED.username, phone = EXCLUDED.phone;
+    """, (user_id, data.get('name'), data.get('gender'), int(data.get('age', 0)),
+          data.get('sobriety'), data.get('city'), data.get('program_info'),
+          data.get('username'), data.get('phone')))
     conn.commit()
     cur.close()
     conn.close()
 
 async def save_sponsor_draft(user_id, data):
-    """Сохраняет заполненную анкету пользователя в таблицу черновиков"""
     await asyncio.to_thread(_save_draft_sync, user_id, data)
-
-
-# =====================================================================
-# ФУНКЦИИ ИСТОРИИ ДИАЛОГОВ (ДЛЯ КОНТЕКСТА ИИ В POSTGRESQL)
-# =====================================================================
 
 def _add_message_sync(user_id: int, role: str, content: str):
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO dialog_history (user_id, role, content) VALUES (%s, %s, %s)",
-            (user_id, role, content)
-        )
+        cur.execute("INSERT INTO dialog_history (user_id, role, content) VALUES (%s, %s, %s)", (user_id, role, content))
         conn.commit()
         cur.close()
         conn.close()
     except Exception as e:
-        logging.error(f"Ошибка сохранения истории в БД: {e}")
+        logging.error(f"Ошибка сохранения истории: {e}")
 
 async def add_message_to_history(user_id: int, role: str, content: str):
-    """Записывает реплику пользователя или бота в историю диалога (PostgreSQL)"""
     await asyncio.to_thread(_add_message_sync, user_id, role, content)
-
 
 def _get_recent_history_sync(user_id: int, limit: int = 6) -> list:
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur.execute(
-            "SELECT role, content FROM dialog_history WHERE user_id = %s ORDER BY id DESC LIMIT %s",
-            (user_id, limit)
-        )
+        cur.execute("SELECT role, content FROM dialog_history WHERE user_id = %s ORDER BY id DESC LIMIT %s", (user_id, limit))
         rows = cur.fetchall()
         cur.close()
         conn.close()
-        
-        # Возвращаем в хронологическом порядке (от старых к новым)
-        history = []
-        for role, content in reversed(rows):
-            history.append({"role": role, "content": content})
-        return history
-    except Exception as e:
-        logging.error(f"Ошибка чтения истории из БД: {e}")
+        return [{"role": r, "content": c} for r, c in reversed(rows)]
+    except Exception:
         return []
 
 async def get_recent_history(user_id: int, limit: int = 6) -> list:
-    """Достает последние сообщения пользователя для сохранения логической цепочки"""
     return await asyncio.to_thread(_get_recent_history_sync, user_id, limit)

@@ -8,6 +8,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from config import TOKEN 
+from database import init_db  # <--- Импортируем инициализацию базы данных
+
 from routers.start import router as start_router
 from routers.menu import router as menu_router
 from routers.form import router as form_router
@@ -26,6 +28,9 @@ from routers.ai_chat import router as ai_chat_router  # Отдельный ро�
 logging.basicConfig(level=logging.INFO)
 
 async def main():
+    # ВАЖНО: Создаем таблицы в БД (включая таблицу users для языков) при старте
+    await init_db()
+
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
     
