@@ -12,7 +12,6 @@ from aiogram.types import (
     Message,
 )
 
-# Исправлены импорты на абсолютные, чтобы бот не падал при старте
 from config import DATABASE_URL, SERVANT_CHAT_IDS
 from database import get_user_language, set_user_language
 from routers.reflections import EVENING_PRAYER_TEXT, MORNING_PRAYER_TEXT
@@ -20,7 +19,6 @@ from routers.ai_helper import ask_ai_for_beginner
 
 router = Router()
 
-# Словарь локализации (Русский / Қазақша)
 T = {
     "ru": {
         "start": "Приветствую! Добро пожаловать в бот АА.\n\n🤖 Задайте любой вопрос о программе, и я помогу.\n\n👇 Главное меню внизу:",
@@ -62,8 +60,8 @@ T = {
     },
 }
 
-
-def get_kb(lang="ru"):
+# Обратная совместимость для других файлов, которые ищут эту функцию
+def get_main_menu_keyboard(lang="ru"):
     b = T[lang]["btns"]
     return types.ReplyKeyboardMarkup(
         keyboard=[
@@ -72,13 +70,13 @@ def get_kb(lang="ru"):
             [types.KeyboardButton(text=b[3]), types.KeyboardButton(text=b[4])],
             [
                 types.KeyboardButton(text=b[5]),
-                types.KeyboardButton(
-                    text="🌐 Язык: Русский" if lang == "ru" else "🌐 Тіл: Қазақша"
-                ),
+                types.KeyboardButton(text="🌐 Язык: Русский" if lang == "ru" else "🌐 Тіл: Қазақша"),
             ],
         ],
         resize_keyboard=True,
     )
+
+get_kb = get_main_menu_keyboard
 
 
 @router.message(Command("start"))
@@ -116,10 +114,7 @@ async def daily_ref(message: types.Message):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        cur.execute(
-            "SELECT text FROM reflections_archive WHERE day = %s AND month = %s",
-            (today.day, today.month),
-        )
+        cur.execute("SELECT text FROM reflections_archive WHERE day = %s AND month = %s", (today.day, today.month))
         row = cur.fetchone()
         cur.close()
         conn.close()
