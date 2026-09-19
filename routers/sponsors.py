@@ -42,6 +42,14 @@ SPONSOR_TEXTS = {
         "btn_back": "⬅️ Назад",
         "btn_forward": "Вперед ➡️",
         "btn_edit": "✏️ Редактировать анкету",
+        "edit_age": "📅 Возраст",
+        "edit_sobriety": "🕊 Срок трезвости",
+        "edit_city": "📍 Город",
+        "edit_phone": "📞 Телефон",
+        "edit_program": "📖 Опыт",
+        "access_denied_field": "⚠️ Доступ запрещен!",
+        "age_error": "⚠️ Возраст должен состоять только из цифр (от 18 до 100). Попробуйте еще раз:",
+        "field_error": "Ошибка поля.",
         "fields": {
             "age": "новый возраст (цифрой от 18 до 100)",
             "sobriety": "новый срок трезвости",
@@ -67,6 +75,14 @@ SPONSOR_TEXTS = {
         "btn_back": "⬅️ Артқа",
         "btn_forward": "Алға ➡️",
         "btn_edit": "✏️ Сауалнаманы өңдеу",
+        "edit_age": "📅 Жасы",
+        "edit_sobriety": "🕊 Трезвость мерзімі",
+        "edit_city": "📍 Қала",
+        "edit_phone": "📞 Телефон",
+        "edit_program": "📖 Тәжірибе",
+        "access_denied_field": "⚠️ Қолжетімсіз!",
+        "age_error": "⚠️ Жас тек цифрлардан тұруы тиіс (18 бен 100 аралығында). Қайталап көріңіз:",
+        "field_error": "Өріс қатесі.",
         "fields": {
             "age": "жаңа жас (18 бен 100 аралығындағы сан)",
             "sobriety": "жаңа сабыр/тазалық мерзімі",
@@ -133,11 +149,7 @@ async def show_list_page(callback: CallbackQuery):
       else "OR gender ILIKE '%жен%'"
   )
   label = (
-      (
-          "Братья"
-          if lang == "ru"
-          else "Бауырлар"
-      )
+      ("Братья" if lang == "ru" else "Бауырлар")
       if list_type == "brothers"
       else ("Сестры" if lang == "ru" else "Әпкелер")
   )
@@ -225,7 +237,9 @@ async def show_details(callback: CallbackQuery):
 
   if sp:
     name, gender, age, sobriety, city, username, phone, program_info = sp
-    tg_contact = f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
+    tg_contact = (
+        f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
+    )
 
     text = (
         f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
@@ -278,13 +292,13 @@ async def edit_menu(callback: CallbackQuery):
       inline_keyboard=[
           [
               InlineKeyboardButton(
-                  text="📅 Возраст",
+                  text=t["edit_age"],
                   callback_data=f"edit_field_{user_id}_age_{list_type}_{page}",
               )
           ],
           [
               InlineKeyboardButton(
-                  text="🕊 Срок трезвости",
+                  text=t["edit_sobriety"],
                   callback_data=(
                       f"edit_field_{user_id}_sobriety_{list_type}_{page}"
                   ),
@@ -292,19 +306,19 @@ async def edit_menu(callback: CallbackQuery):
           ],
           [
               InlineKeyboardButton(
-                  text="📍 Город",
+                  text=t["edit_city"],
                   callback_data=f"edit_field_{user_id}_city_{list_type}_{page}",
               )
           ],
           [
               InlineKeyboardButton(
-                  text="📞 Телефон",
+                  text=t["edit_phone"],
                   callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}",
               )
           ],
           [
               InlineKeyboardButton(
-                  text="📖 Опыт",
+                  text=t["edit_program"],
                   callback_data=(
                       f"edit_field_{user_id}_programinfo_{list_type}_{page}"
                   ),
@@ -336,7 +350,7 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
     field_name = "program_info"
 
   if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-    await callback.answer("⚠️ Доступ запрещен!", show_alert=True)
+    await callback.answer(t["access_denied_field"], show_alert=True)
     return
 
   await state.update_data(
@@ -354,6 +368,9 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
 
 @router.message(EditSponsorState.waiting_for_new_value)
 async def save_edited_field(message: Message, state: FSMContext):
+  lang = await get_user_language(message.from_user.id)
+  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+
   new_value = message.text.strip()
   data = await state.get_data()
   target_user_id = data.get("target_user_id")
@@ -361,16 +378,13 @@ async def save_edited_field(message: Message, state: FSMContext):
 
   allowed_fields = ["age", "sobriety", "city", "phone", "program_info"]
   if field_name not in allowed_fields:
-    await message.answer("Ошибка поля.")
+    await message.answer(t["field_error"])
     await state.clear()
     return
 
   if field_name == "age":
     if not new_value.isdigit() or not (18 <= int(new_value) <= 100):
-      await message.answer(
-          "⚠️ Возраст должен состоять только из цифр (от 18 до 100)."
-          " Попробуйте еще раз:"
-      )
+      await message.answer(t["age_error"])
       return
 
   try:
@@ -382,9 +396,9 @@ async def save_edited_field(message: Message, state: FSMContext):
     cur.close()
     conn.close()
 
-    await message.answer("✅ Данные успешно обновлены!")
+    await message.answer(t["success_update"])
     await state.clear()
   except Exception as e:
     print(f"Ошибка при обновлении: {e}")
-    await message.answer("❌ Произошла ошибка при сохранении.")
+    await message.answer(t["error_update"])
     await state.clear()
