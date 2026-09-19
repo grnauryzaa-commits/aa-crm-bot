@@ -36,7 +36,10 @@ TEXTS = {
         "help_title": "❓ <b>Помощь и поддержка</b>\n\nЕсли вам тяжело или у вас срочный вопрос — вы можете задать его мне в чате или позвать дежурного служащего.",
         "help_btn": "👤 Позвать живого служащего",
         "servant_alert": "🚨 <b>Новый запрос о помощи!</b>\n\nПользователь: {user_link}{username_text}\nID: <code>{user_id}</code>\nНажал кнопку «Позвать живого служащего».",
-        "servant_success": "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и свяжется с вами в ближайшее время."
+        "servant_success": "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и свяжется с вами в ближайшее время.",
+        "step11_title": "🙏 <b>11 Шаг программы АА</b>\n\nВыберите нужную практику:",
+        "step11_morning": "🌅 Утренняя молитва",
+        "step11_evening": "🌙 Вечерняя молитва"
     },
     "kk": {
         "start_greeting": (
@@ -60,7 +63,10 @@ TEXTS = {
         "help_title": "❓ <b>Көмек және қолдау</b>\n\nЕгер сізге қиын болса немесе шұғыл сұрағыңыз болса — оны маған чатта қоюға немесе кезекші қызметкерді шақыруға болады.",
         "help_btn": "👤 Тірі қызметкерді шақыру",
         "servant_alert": "🚨 <b>Жаңа көмек сұрау!</b>\n\nПайдаланушы: {user_link}{username_text}\nID: <code>{user_id}</code>\n«Тірі қызметкерді шақыру» түймесін басты.",
-        "servant_success": "🙏 Өтінішіңіз қабылданды. Қауымдастықтың кезекші қызметкері хабардар етілді және жақын арада сізбен байланысады."
+        "servant_success": "🙏 Өтінішіңіз қабылданды. Қауымдастықтың кезекші қызметкері хабардар етілді және жақын арада сізбен байланысады.",
+        "step11_title": "🙏 <b>АА бағдарламасының 11-ші қадамы</b>\n\nҚажетті тәжірибені таңдаңыз:",
+        "step11_morning": "🌅 Таңғы дұға",
+        "step11_evening": "🌙 Кешкі дұға"
     }
 }
 
@@ -78,7 +84,6 @@ def get_main_menu_keyboard(lang='ru'):
     )
 
 def format_reflection_text(text, today):
-    """Мощная функция очистки мусора из ежедневных размышлений"""
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     forbidden = [
         "WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
@@ -153,17 +158,15 @@ async def show_daily_reflection(message: types.Message):
 
 @router.message(F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"}))
 async def step_eleven_menu(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    t = TEXTS[lang]
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🌅 Утренняя молитва", callback_data="get_morning_prayer")],
-            [InlineKeyboardButton(text="🌙 Вечерняя молитва", callback_data="get_evening_prayer")]
+            [InlineKeyboardButton(text=t["step11_morning"], callback_data="get_morning_prayer")],
+            [InlineKeyboardButton(text=t["step11_evening"], callback_data="get_evening_prayer")]
         ]
     )
-    await message.answer(
-        "🙏 <b>11 Шаг программы АА</b>\n\nВыберите нужную практику:",
-        reply_markup=keyboard,
-        parse_mode="HTML"
-    )
+    await message.answer(t["step11_title"], reply_markup=keyboard, parse_mode="HTML")
 
 @router.callback_query(F.data == "get_morning_prayer")
 async def send_morning_callback(callback: types.CallbackQuery):
