@@ -96,7 +96,6 @@ def format_reflection(text, today):
             filtered.pop(0)
     months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
     
-    # Исправлено: объединение строк вынесено наружу, бэкслешей внутри f-строки нет
     joined_text = '\n\n'.join(filtered)
     escaped_body = html.escape(joined_text)
     day_str = str(today.day)
