@@ -96,13 +96,14 @@ async def start_sponsor_form(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     lang = await get_user_language(user_id)
     
-    # Принудительная проверка: если кнопка была на казахском, гарантированно ставим 'kk'
     if callback.message.reply_markup:
         for row in callback.message.reply_markup.inline_keyboard:
             for btn in row:
                 if btn.callback_data == "start_sponsor_registration" and "толтыру" in btn.text.lower():
                     lang = "kk"
 
+    # Сохраняем язык в стейт, чтобы он не терялся на следующих шагах
+    await state.update_data(lang=lang)
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     
     await state.set_state(SponsorForm.name)
@@ -117,13 +118,15 @@ async def start_sponsor_form(callback: CallbackQuery, state: FSMContext):
 async def process_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text)
     await state.set_state(SponsorForm.city)
-    lang = await get_user_language(message.from_user.id)
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["q_city"], parse_mode="HTML")
 
 @router.message(SponsorForm.name)
-async def process_name_invalid(message: Message):
-    lang = await get_user_language(message.from_user.id)
+async def process_name_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["error_text"])
 
@@ -131,13 +134,15 @@ async def process_name_invalid(message: Message):
 async def process_city(message: Message, state: FSMContext):
     await state.update_data(city=message.text)
     await state.set_state(SponsorForm.sobriety_date)
-    lang = await get_user_language(message.from_user.id)
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["q_sobriety"], parse_mode="HTML")
 
 @router.message(SponsorForm.city)
-async def process_city_invalid(message: Message):
-    lang = await get_user_language(message.from_user.id)
+async def process_city_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["error_text"])
 
@@ -145,13 +150,15 @@ async def process_city_invalid(message: Message):
 async def process_sobriety(message: Message, state: FSMContext):
     await state.update_data(sobriety_date=message.text)
     await state.set_state(SponsorForm.sponsor_name)
-    lang = await get_user_language(message.from_user.id)
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["q_sponsor"], parse_mode="HTML")
 
 @router.message(SponsorForm.sobriety_date)
-async def process_sobriety_invalid(message: Message):
-    lang = await get_user_language(message.from_user.id)
+async def process_sobriety_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["error_text"])
 
@@ -159,13 +166,15 @@ async def process_sobriety_invalid(message: Message):
 async def process_sponsor_name(message: Message, state: FSMContext):
     await state.update_data(sponsor_name=message.text)
     await state.set_state(SponsorForm.phone)
-    lang = await get_user_language(message.from_user.id)
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["q_phone"], parse_mode="HTML")
 
 @router.message(SponsorForm.sponsor_name)
-async def process_sponsor_invalid(message: Message):
-    lang = await get_user_language(message.from_user.id)
+async def process_sponsor_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["error_text"])
 
@@ -173,13 +182,15 @@ async def process_sponsor_invalid(message: Message):
 async def process_phone(message: Message, state: FSMContext):
     await state.update_data(phone=message.text)
     await state.set_state(SponsorForm.comment)
-    lang = await get_user_language(message.from_user.id)
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["q_comment"], parse_mode="HTML")
 
 @router.message(SponsorForm.phone)
-async def process_phone_invalid(message: Message):
-    lang = await get_user_language(message.from_user.id)
+async def process_phone_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["error_text"])
 
@@ -188,7 +199,7 @@ async def process_comment(message: Message, state: FSMContext):
     await state.update_data(comment=message.text)
     data = await state.get_data()
     user_id = message.from_user.id
-    lang = await get_user_language(user_id)
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
     save_sponsor_to_db(
@@ -222,7 +233,8 @@ async def process_comment(message: Message, state: FSMContext):
     await state.clear()
 
 @router.message(SponsorForm.comment)
-async def process_comment_invalid(message: Message):
-    lang = await get_user_language(message.from_user.id)
+async def process_comment_invalid(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     await message.answer(t["error_text"])
