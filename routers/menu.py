@@ -11,14 +11,16 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
+
+# Исправлены импорты на абсолютные, чтобы бот не падал при старте
 from config import DATABASE_URL, SERVANT_CHAT_IDS
 from database import get_user_language, set_user_language
 from routers.reflections import EVENING_PRAYER_TEXT, MORNING_PRAYER_TEXT
-from .ai_helper import ask_ai_for_beginner
+from routers.ai_helper import ask_ai_for_beginner
 
 router = Router()
 
-# Унифицированный словарь текстов (Русский / Қазақша)
+# Словарь локализации (Русский / Қазақша)
 T = {
     "ru": {
         "start": "Приветствую! Добро пожаловать в бот АА.\n\n🤖 Задайте любой вопрос о программе, и я помогу.\n\n👇 Главное меню внизу:",
@@ -79,7 +81,6 @@ def get_kb(lang="ru"):
     )
 
 
-# --- СТАРТ И МЕНЮ ---
 @router.message(Command("start"))
 @router.message(F.text.in_({"🏠 Главное меню", "Главное меню", "🏠 Басты мәзір", "Басты мәзір"}))
 async def cmd_start_menu(message: types.Message, state: FSMContext):
@@ -89,7 +90,6 @@ async def cmd_start_menu(message: types.Message, state: FSMContext):
     await message.answer(text, reply_markup=get_kb(lang), parse_mode="HTML")
 
 
-# --- ЯЗЫК ---
 @router.message(F.text.startswith("🌐"))
 async def lang_menu(message: types.Message):
     kb = InlineKeyboardMarkup(
@@ -109,7 +109,6 @@ async def set_lang(callback: CallbackQuery):
     await callback.answer()
 
 
-# --- РАЗМЫШЛЕНИЯ ---
 @router.message(F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}))
 async def daily_ref(message: types.Message):
     today = datetime.now()
@@ -134,7 +133,6 @@ async def daily_ref(message: types.Message):
         await message.answer("Ошибка БД", reply_markup=get_kb(lang))
 
 
-# --- 11 ШАГ ---
 @router.message(F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"}))
 async def step11(message: types.Message):
     kb = InlineKeyboardMarkup(
@@ -153,7 +151,6 @@ async def send_prayer(callback: CallbackQuery):
     await callback.answer()
 
 
-# --- СПОНСОРЫ ---
 @router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
 async def sponsor_menu(message: types.Message):
     kb = InlineKeyboardMarkup(
@@ -193,7 +190,6 @@ async def back_menu(callback: CallbackQuery):
     await callback.answer()
 
 
-# --- РАСПИСАНИЕ (ВСЕ ЛОКАЦИИ) ---
 def get_sch_kb():
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -233,7 +229,6 @@ async def schedule_cb(callback: CallbackQuery):
     await callback.answer()
 
 
-# --- ПОМОЩЬ И СЛУЖАЩИЕ ---
 @router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
 async def help_handler(message: types.Message):
     lang = await get_user_language(message.from_user.id)
@@ -258,7 +253,6 @@ async def call_servant(callback: CallbackQuery):
     await callback.answer()
 
 
-# --- ИИ ХЕНДЛЕР ---
 @router.message(StateFilter(None), F.text)
 async def ai_handler(message: types.Message, state: FSMContext):
     lang = await get_user_language(message.from_user.id)
