@@ -7,15 +7,14 @@ router = Router()
 
 @router.message(F.text)
 async def handle_beginner_questions(message: types.Message):
-    # ЛОГИРУЕМ в консоль Railway информацию о каждом входящем сообщении
-    logging.info(f"Входящее сообщение! Чат ID: {message.chat.id}, Тип чата: {message.chat.type}, Текст: {message.text}")
+    # Принудительно логируем каждое сообщение, попавшее в ai_chat
+    logging.warning(f"🚨 [AI_CHAT СРАБОТАЛ!] Тип чата: {message.chat.type} | ID чата: {message.chat.id} | Текст: {message.text}")
 
-    # ЖЕСТКИЙ ЗАПРЕТ: Бот отвечает ТОЛЬКО в личных сообщениях (private). 
-    # В любых группах, супергруппах и каналах он полностью молчит.
+    # ЖЕСТКИЙ ЗАПРЕТ: Бот отвечает ТОЛЬКО в личных сообщениях
     if message.chat.type != "private":
+        logging.warning("🛑 [БЛОКИРОВКА] Сообщение отброшено, так как это не личный чат.")
         return
 
-    # Дополнительная страховка на случай попадания служебных текстов
     menu_buttons = [
         "📖 Ежедневные размышления", 
         "🙏 11 Шаг", 
@@ -27,13 +26,9 @@ async def handle_beginner_questions(message: types.Message):
     if message.text in menu_buttons:
         return
 
-    # Отправляем статус "печатает..."
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
-    
-    # Запрос к искусственному интеллекту
     ai_response = await ask_ai_for_beginner(message.from_user.id, message.text)
 
-    # Кнопка связи со служащим
     servant_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
