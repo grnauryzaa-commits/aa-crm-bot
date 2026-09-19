@@ -66,26 +66,27 @@ def get_main_menu_keyboard(lang='ru'):
     )
 
 def clean_reflection_text(raw_text: str) -> str:
-    """Чистит текст размышлений от ссылок, шапок сайтов и мусора соцсетей"""
+    """Безопасная очистка: убираем только явный мусор, сохраняя сам текст"""
     if not raw_text:
         return ""
     
-    # Убираем ссылки (www.Mos-Nach.ru, http и т.д.)
-    text = re.sub(r'https?://\S+|www\.\S+', '', raw_text)
+    lines = raw_text.splitlines()
+    cleaned_lines = []
     
-    # Убираем служебные строки АА-сайтов
-    text = re.sub(r'Анонимные\s+Алкоголики\.', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'Группа\s+["«].*?["»].*?(?=\n|$)', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'Ежедневные\s+Размышления\s+на\s+\d+\s+\w+\.?', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'Сегодня\s+\d+\s+\w+\.?', '', text, flags=re.IGNORECASE)
-    
-    # Убираем соцсети и блок "Поделиться"
-    text = re.sub(r'Поделиться:.*', '', text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r'\b(Twitter|Facebook|Vkontakte|WhatsApp|Telegram|EMail)\b', '', text, flags=re.IGNORECASE)
-    
-    # Убираем пустые строки и лишние пробелы
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return "\n".join(lines)
+    for line in lines:
+        line_str = line.strip()
+        # Пропускаем строки с мусором и ссылками
+        if not line_str:
+            continue
+        if "www.Mos-Nach.ru" in line_str or "http://" in line_str or "https://" in line_str:
+            continue
+        if "Поделиться:" in line_str or line_str in ["Twitter", "Facebook", "Vkontakte", "WhatsApp", "Telegram", "EMail"]:
+            continue
+        if "Анонимные Алкоголики." in line_str:
+            continue
+        cleaned_lines.append(line_str)
+        
+    return "\n".join(cleaned_lines)
 
 @router.message(Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
@@ -158,6 +159,7 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
     if message.chat.type != "private":
         return
 
+    # ВАЖНО: Добавили все кнопки меню, чтобы ИИ не перехватывал их нажатия и они работали в других роутерах!
     menu_buttons = [
         "📖 Ежедневные размышления", "🙏 11 Шаг", 
         "➕ Стать спонсором", "🤝 Спонсоры", 
