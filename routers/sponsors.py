@@ -23,7 +23,7 @@ class SponsorForm(StatesGroup):
   waiting_for_name = State()
 
 
-# Полные словари локализации
+# Словари локализации
 SPONSOR_TEXTS = {
     "ru": {
         "reg_title": (
