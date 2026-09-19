@@ -23,7 +23,7 @@ class SponsorForm(StatesGroup):
   waiting_for_name = State()
 
 
-# Словари локализации для спонсоров
+# Полные словари локализации
 SPONSOR_TEXTS = {
     "ru": {
         "reg_title": (
@@ -52,6 +52,7 @@ SPONSOR_TEXTS = {
         "field_error": "Ошибка поля.",
         "label_brothers": "Братья",
         "label_sisters": "Сестры",
+        "default_city": "Город не указан",
         "fields": {
             "age": "новый возраст (цифрой от 18 до 100)",
             "sobriety": "новый срок трезвости",
@@ -87,6 +88,7 @@ SPONSOR_TEXTS = {
         "field_error": "Өріс қатесі.",
         "label_brothers": "Бауырлар",
         "label_sisters": "Әпкелер",
+        "default_city": "Қала көрсетілмеген",
         "fields": {
             "age": "жаңа жас (18 бен 100 аралығындағы сан)",
             "sobriety": "жаңа сабыр/тазалық мерзімі",
@@ -103,6 +105,7 @@ async def start_sponsor_registration_handler(
     callback: CallbackQuery, state: FSMContext
 ):
   lang = await get_user_language(callback.from_user.id)
+  print(f"[DEBUG SPONSORS] Reg lang for {callback.from_user.id}: {lang}")
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
   await callback.message.delete()
@@ -114,7 +117,9 @@ async def start_sponsor_registration_handler(
 @router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu(event: Message | CallbackQuery):
-  lang = await get_user_language(event.from_user.id)
+  user_id = event.from_user.id
+  lang = await get_user_language(user_id)
+  print(f"[DEBUG SPONSORS] Menu lang for {user_id}: {lang}")
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
   keyboard = InlineKeyboardMarkup(
@@ -140,7 +145,9 @@ async def sponsors_menu(event: Message | CallbackQuery):
 
 @router.callback_query(F.data.startswith(("list_brothers_", "list_sisters_")))
 async def show_list_page(callback: CallbackQuery):
-  lang = await get_user_language(callback.from_user.id)
+  user_id = callback.from_user.id
+  lang = await get_user_language(user_id)
+  print(f"[DEBUG SPONSORS] List lang for {user_id}: {lang}")
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
   parts = callback.data.split("_")
@@ -153,10 +160,7 @@ async def show_list_page(callback: CallbackQuery):
       else "OR gender ILIKE '%жен%'"
   )
   
-  # Используем локализованные лейблы из словаря
-  label = (
-      t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
-  )
+  label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
   db_keyword = "брат" if list_type == "brothers" else "сестр"
 
   conn = psycopg2.connect(DATABASE_URL)
@@ -183,7 +187,8 @@ async def show_list_page(callback: CallbackQuery):
 
   keyboard = []
   for uid, name, age, city, sobriety in current_sponsors:
-    button_text = f"{name}, {age} | {city or ('Город' if lang == 'ru' else 'Қала')} | {sobriety}"
+    city_name = city if city else t["default_city"]
+    button_text = f"{name}, {age} | {city_name} | {sobriety}"
     keyboard.append([
         InlineKeyboardButton(
             text=button_text,
@@ -220,7 +225,8 @@ async def show_list_page(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
-  lang = await get_user_language(callback.from_user.id)
+  user_id_cb = callback.from_user.id
+  lang = await get_user_language(user_id_cb)
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
   parts = callback.data.split("_")
@@ -378,7 +384,7 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
   await callback.answer()
 
 
-@router.message(EditSponsorState.waiting_for_new_value)
+@router.message(EditSPanelState = StateFilter(EditSponsorState.waiting_for_new_value) if "StateFilter" in globals() else EditSponsorState.waiting_for_new_value)
 async def save_edited_field(message: Message, state: FSMContext):
   lang = await get_user_language(message.from_user.id)
   t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
