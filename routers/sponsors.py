@@ -50,6 +50,8 @@ SPONSOR_TEXTS = {
         "access_denied_field": "⚠️ Доступ запрещен!",
         "age_error": "⚠️ Возраст должен состоять только из цифр (от 18 до 100). Попробуйте еще раз:",
         "field_error": "Ошибка поля.",
+        "label_brothers": "Братья",
+        "label_sisters": "Сестры",
         "fields": {
             "age": "новый возраст (цифрой от 18 до 100)",
             "sobriety": "новый срок трезвости",
@@ -76,13 +78,15 @@ SPONSOR_TEXTS = {
         "btn_forward": "Алға ➡️",
         "btn_edit": "✏️ Сауалнаманы өңдеу",
         "edit_age": "📅 Жасы",
-        "edit_sobriety": "🕊 Трезвость мерзімі",
+        "edit_sobriety": "🕊 Трэзвость мерзімі",
         "edit_city": "📍 Қала",
         "edit_phone": "📞 Телефон",
         "edit_program": "📖 Тәжірибе",
         "access_denied_field": "⚠️ Қолжетімсіз!",
         "age_error": "⚠️ Жас тек цифрлардан тұруы тиіс (18 бен 100 аралығында). Қайталап көріңіз:",
         "field_error": "Өріс қатесі.",
+        "label_brothers": "Бауырлар",
+        "label_sisters": "Әпкелер",
         "fields": {
             "age": "жаңа жас (18 бен 100 аралығындағы сан)",
             "sobriety": "жаңа сабыр/тазалық мерзімі",
@@ -148,10 +152,10 @@ async def show_list_page(callback: CallbackQuery):
       if list_type == "brothers"
       else "OR gender ILIKE '%жен%'"
   )
+  
+  # Используем локализованные лейблы из словаря
   label = (
-      ("Братья" if lang == "ru" else "Бауырлар")
-      if list_type == "brothers"
-      else ("Сестры" if lang == "ru" else "Әпкелер")
+      t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
   )
   db_keyword = "брат" if list_type == "brothers" else "сестр"
 
@@ -179,7 +183,7 @@ async def show_list_page(callback: CallbackQuery):
 
   keyboard = []
   for uid, name, age, city, sobriety in current_sponsors:
-    button_text = f"{name}, {age} | {city or 'Город'} | {sobriety}"
+    button_text = f"{name}, {age} | {city or ('Город' if lang == 'ru' else 'Қала')} | {sobriety}"
     keyboard.append([
         InlineKeyboardButton(
             text=button_text,
@@ -241,11 +245,18 @@ async def show_details(callback: CallbackQuery):
         f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
     )
 
-    text = (
-        f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
-        f" Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
-        f" {tg_contact}\n📞 Телефон: {phone}"
-    )
+    if lang == "kk":
+      text = (
+          f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Трэзвость мерзімі: {sobriety}\n📍"
+          f" Қала: {city}\n📖 Тәжірибе: {program_info}\n✈️ Telegram:"
+          f" {tg_contact}\n📞 Телефон: {phone}"
+      )
+    else:
+      text = (
+          f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
+          f" Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
+          f" {tg_contact}\n📞 Телефон: {phone}"
+      )
 
     keyboard = [
         [
@@ -362,7 +373,8 @@ async def start_editing_field(callback: CallbackQuery, state: FSMContext):
   await state.set_state(EditSponsorState.waiting_for_new_value)
 
   field_desc = t["fields"].get(field_name, "значение")
-  await callback.message.answer(f"✍️ Напишите {field_desc}:")
+  prompt_prefix = "✍️ Жазыңыз: " if lang == "kk" else "✍️ Напишите "
+  await callback.message.answer(f"{prompt_prefix}{field_desc}:")
   await callback.answer()
 
 
