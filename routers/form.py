@@ -2,8 +2,10 @@ from aiogram import Router, F, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database import get_user_language, set_sponsor_data, get_user_by_telegram_id
+from database import get_user_language, set_user_language
 from config import SERVANT_CHAT_IDS
+import psycopg2
+from config import DATABASE_URL
 import logging
 
 router = Router()
@@ -49,13 +51,13 @@ FORM_TEXTS = {
         "btn_back": "🔙 Мәзірге оралу",
         "q_name": "👤 <b>Атыңызды жазыңыз:</b>",
         "q_city": "📍 <b>Қай қалада тұрасыз?</b>",
-        "q_sobriety": "📅 <b>Трезвость (сауығу) күнін немесе жылын жазыңыз</b> (мысалы: <i>15.05.2020</i> немесе тек жыл):",
+        "q_sobriety": "📅 <b>Сауығу күнін немесе жылын жазыңыз</b> (мысалы: <i>15.05.2020</i> немесе тек жыл):",
         "q_sponsor": "🤝 <b>Демеушіңіз кім?</b> (Аты, Тегі):",
         "q_phone": "📱 <b>Байланыс телефоныңызды жазыңыз</b> (WhatsApp/Telegram үшін):",
         "q_comment": "💬 <b>Өзіңіз туралы қысқаша жазыңыз</b> немесе сызықша (-) қойыңыз:",
         "error_text": "❌ Медиафайлдар емес, мәтін жіберуіңізді сұраймыз.",
         "success": (
-            "✅ <b>Рақмет! Сіздің сауалнамаңыз сәтті толтырылып, тексеруге жіберілді.</b>\n\n"
+            "✅ <b>Рақмет! Сіздің сауалнаңыз сәтті толтырылып, тексеруге жіберілді.</b>\n\n"
             "Әкімші деректерді тексергеннен кейін, сіздің байланысыңыз демеушілер тізімінде пайда болады."
         ),
         "admin_alert": (
@@ -71,10 +73,41 @@ FORM_TEXTS = {
     }
 }
 
+def save_sponsor_to_db(user_id, name, city, sobriety_date, sponsor_name, phone, comment):
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO sponsors (user_id, name, city, sobriety_date, sponsor_name, phone, comment)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                name = EXCLUDED.name,
+                city = EXCLUDED.city,
+                sobriety_date = EXCLUDED.sobriety_date,
+                sponsor_name = EXCLUDED.sponsor_name,
+                phone = EXCLUDED.phone,
+                comment = EXCLUDED.comment
+            """,
+            (user_id, name, city, sobriety_date, sponsor_name, phone, comment)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Ошибка сохранения спонсора в базу: {e}")
+
 @router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
 async def become_sponsors_menu(message: Message, state: FSMContext):
     await state.clear()
-    lang = await get_user_language(message.from_user.id)
+    user_id = message.from_user.id
+    
+    if "Демеуші" in message.text:
+        await set_user_language(user_id, "kk")
+        lang = "kk"
+    else:
+        lang = await get_user_language(user_id)
+        
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     
     keyboard = InlineKeyboardMarkup(
@@ -176,8 +209,7 @@ async def process_comment(message: Message, state: FSMContext):
     lang = await get_user_language(user_id)
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
-    # Сохраняем анкету в базу данных
-    await set_sponsor_data(
+    save_sponsor_to_db(
         user_id=user_id,
         name=data["name"],
         city=data["city"],
@@ -189,7 +221,6 @@ async def process_comment(message: Message, state: FSMContext):
 
     await message.answer(t["success"], parse_mode="HTML")
 
-    # Уведомление администраторам (служащим)
     admin_text = t["admin_alert"].format(
         name=data["name"],
         city=data["city"],

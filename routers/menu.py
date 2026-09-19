@@ -178,8 +178,6 @@ async def send_evening_callback(callback: types.CallbackQuery):
     await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
     await callback.answer()
 
-# (Хендлер кнопки спонсора полностью перенесен в routers/form.py)
-
 @router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu_handler(event: Message | CallbackQuery):
@@ -315,7 +313,7 @@ async def call_servant_callback(callback: types.CallbackQuery):
                 parse_mode="HTML"
             )
         except Exception as e:
-            logging.error(f"Не удалось отправить уведомление служащему {servant_id}: {e}")
+            logging.error(f"Не удалось отправить уведомление служащему: {e}")
 
     await callback.message.answer(t["servant_success"])
     await callback.answer()
