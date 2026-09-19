@@ -115,6 +115,8 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
 async def start_form_text(message: Message, state: FSMContext):
   try:
     lang = await get_user_language(message.from_user.id)
+    if message.text == "➕ Демеуші болу":
+      lang = "kk"
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
     keyboard = InlineKeyboardMarkup(
@@ -139,14 +141,12 @@ async def start_form_callback(callback: CallbackQuery, state: FSMContext):
   try:
     lang = await get_user_language(callback.from_user.id)
     
-    # Страховка для корректного определения языка по тексту кнопки
     if callback.message.reply_markup:
         for row in callback.message.reply_markup.inline_keyboard:
             for btn in row:
                 if btn.callback_data == "start_sponsor_registration" and "толтыру" in btn.text.lower():
                     lang = "kk"
 
-    # Жёстко фиксируем язык в стейте на время всей анкеты
     await state.update_data(lang=lang)
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
