@@ -329,7 +329,7 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
         "📅 Кесте", "❓ Көмек", "🏠 Басты мәзір", "Басты мәзір",
         "🌐 Язык: Русский", "🌐 Тіл: Қазақша"
     ]
-    if message.text in menu_buttons:
+    if message.text in menu_buttons or "Демеуші болу" in message.text or "Стать спонсором" in message.text:
         return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
