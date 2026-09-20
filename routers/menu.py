@@ -134,11 +134,17 @@ async def set_language_callback(callback: types.CallbackQuery):
     await callback.message.answer(t["lang_changed"], reply_markup=get_main_menu_keyboard(lang))
     await callback.answer()
 
-@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
+@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу") | F.text.contains("Стать спонсором"))
 async def become_sponsors_menu_direct(message: Message, state: FSMContext):
     await state.clear()
-    lang = await get_user_language(message.from_user.id)
+    user_id = message.from_user.id
     
+    if message.text == "➕ Демеуші болу" or "Демеуші болу" in message.text:
+        lang = "kk"
+        await set_user_language(user_id, "kk")
+    else:
+        lang = await get_user_language(user_id)
+        
     titles = {
         "ru": "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
         "kk": "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және басқалармен тәжірибе бөлісуге дайын адам."
@@ -333,7 +339,7 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
         "📅 Кесте", "❓ Көмек", "🏠 Басты мәзір", "Басты мәзір",
         "🌐 Язык: Русский", "🌐 Тіл: Қазақша"
     ]
-    if message.text in menu_buttons:
+    if message.text in menu_buttons or "Демеуші болу" in message.text or "Стать спонсором" in message.text:
         return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
