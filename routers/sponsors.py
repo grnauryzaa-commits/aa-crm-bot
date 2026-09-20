@@ -1,5 +1,5 @@
-import traceback
 import html
+import traceback
 import psycopg2
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
@@ -216,19 +216,18 @@ async def sponsors_menu(event: Message | CallbackQuery):
     await event.answer()
 
 
-@router.callback_query(
-    F.data.startswith(("list_brothers_", "list_sisters_", "list_"))
-)
+@router.callback_query(F.data.startswith("list_"))
 async def show_list_page(callback: CallbackQuery):
   parts = callback.data.split("_")
+  if len(parts) < 3:
+    await callback.answer("Ошибка навигации", show_alert=True)
+    return
+
   list_type = parts[1]
   page = int(parts[2])
-  lang = parts[3] if len(parts) > 3 else "ru"
-
-  if not lang or lang not in ["ru", "kk"]:
-    lang = await get_user_language(callback.from_user.id)
-    if not lang:
-      lang = "ru"
+  lang = (
+      parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "kk"
+  )
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -297,7 +296,6 @@ async def show_list_page(callback: CallbackQuery):
   if nav_buttons:
     keyboard.append(nav_buttons)
 
-  # Единственная кнопка возврата в меню
   keyboard.append([
       InlineKeyboardButton(
           text=t["btn_back"], callback_data=f"menu_sponsors_{lang}"
