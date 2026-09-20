@@ -133,18 +133,21 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
   )
 
 
-# --- ПЕРЕХВАТ КНОПКИ СТАТЬ СПОНСОРОМ ---
+# --- ПЕРЕХВАТ КНОПКИ СТАТЬ СПОНСОРОМ (РАБОТАЕТ И НА РУССКОМ, И НА КАЗАХСКОМ) ---
 @router.message(
-    F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу")
+    F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
+    | F.text.contains("Демеуші")
+    | F.text.contains("Спонсор")
 )
 async def start_form_text(message: Message, state: FSMContext):
   try:
-    if message.text and "Демеуші болу" in message.text:
-        lang = "kk"
+    text_lower = message.text.lower() if message.text else ""
+    if "демеуші" in text_lower:
+      lang = "kk"
     else:
-        lang = await get_user_language(message.from_user.id)
-        if not lang:
-            lang = "ru"
+      lang = await get_user_language(message.from_user.id)
+      if not lang:
+        lang = "ru"
 
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -152,7 +155,8 @@ async def start_form_text(message: Message, state: FSMContext):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=t["btn_fill"], callback_data="start_sponsor_registration"
+                    text=t["btn_fill"],
+                    callback_data=f"start_sponsor_registration_{lang}",
                 )
             ]
         ]
@@ -167,17 +171,23 @@ async def start_form_text(message: Message, state: FSMContext):
 
 # --- МЕНЮ СПОНСОРОВ (СПИСКИ БРАТЬЕВ И СЕСТЕР) ---
 @router.message(
-    F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}) | F.text.contains("Демеушілер")
+    F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"})
+    | F.text.contains("Демеушілер")
+    | F.text.contains("Спонсоры")
 )
-@router.callback_query(F.data == "menu_sponsors")
+@router.callback_query(
+    F.data == "menu_sponsors" or F.data.startswith("menu_sponsors_")
+)
 async def sponsors_menu(event: Message | CallbackQuery):
   user_id = event.from_user.id
   if isinstance(event, Message) and event.text and "Демеушілер" in event.text:
-      lang = "kk"
+    lang = "kk"
+  elif isinstance(event, CallbackQuery) and event.data.endswith("_kk"):
+    lang = "kk"
   else:
-      lang = await get_user_language(user_id)
-      if not lang:
-          lang = "ru"
+    lang = await get_user_language(user_id)
+    if not lang:
+      lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -185,12 +195,13 @@ async def sponsors_menu(event: Message | CallbackQuery):
       inline_keyboard=[
           [
               InlineKeyboardButton(
-                  text=t["btn_brothers"], callback_data="list_brothers_0"
+                  text=t["btn_brothers"],
+                  callback_data=f"list_brothers_0_{lang}",
               )
           ],
           [
               InlineKeyboardButton(
-                  text=t["btn_sisters"], callback_data="list_sisters_0"
+                  text=t["btn_sisters"], callback_data=f"list_sisters_0_{lang}"
               )
           ],
       ]
@@ -198,26 +209,31 @@ async def sponsors_menu(event: Message | CallbackQuery):
   if isinstance(event, Message):
     await event.answer(t["choose_list"], reply_markup=keyboard)
   else:
-    await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
+    try:
+      await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
+    except Exception:
+      await event.message.answer(t["choose_list"], reply_markup=keyboard)
     await event.answer()
 
 
-@router.callback_query(F.data.startswith(("list_brothers_", "list_sisters_")))
+@router.callback_query(
+    F.data.startswith(("list_brothers_", "list_sisters_"))
+)
 async def show_list_page(callback: CallbackQuery):
-  user_id = callback.from_user.id
-  lang = await get_user_language(user_id)
-  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
   parts = callback.data.split("_")
+  # Формат callback_data: list_[brothers|sisters]_[page]_[lang]
   list_type = parts[1]
   page = int(parts[2])
+  lang = parts[3] if len(parts) > 3 else "ru"
+
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
   gender_filter = (
       "OR gender ILIKE '%муж%'"
       if list_type == "brothers"
       else "OR gender ILIKE '%жен%'"
   )
-  
+
   label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
   db_keyword = "брат" if list_type == "brothers" else "сестр"
 
@@ -254,7 +270,7 @@ async def show_list_page(callback: CallbackQuery):
     keyboard.append([
         InlineKeyboardButton(
             text=button_text,
-            callback_data=f"view_sp_{uid}_{list_type}_{page}",
+            callback_data=f"view_sp_{uid}_{list_type}_{page}_{lang}",
         )
     ])
 
@@ -262,22 +278,26 @@ async def show_list_page(callback: CallbackQuery):
   if page > 0:
     nav_buttons.append(
         InlineKeyboardButton(
-            text=t["btn_back"], callback_data=f"list_{list_type}_{page - 1}"
+            text=t["btn_back"],
+            callback_data=f"list_{list_type}_{page - 1}_{lang}",
         )
     )
   if end_idx < len(all_sponsors):
     nav_buttons.append(
         InlineKeyboardButton(
-            text=t["btn_forward"], callback_data=f"list_{list_type}_{page + 1}"
+            text=t["btn_forward"],
+            callback_data=f"list_{list_type}_{page + 1}_{lang}",
         )
     )
 
   if nav_buttons:
     keyboard.append(nav_buttons)
 
-  keyboard.append(
-      [InlineKeyboardButton(text=t["btn_back"], callback_data="menu_sponsors")]
-  )
+  keyboard.append([
+      InlineKeyboardButton(
+          text=t["btn_back"], callback_data=f"menu_sponsors_{lang}"
+      )
+  ])
 
   await callback.message.edit_text(
       f"📖 ({label}) — {page + 1} / {total_pages}:",
@@ -287,14 +307,14 @@ async def show_list_page(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
-  user_id_cb = callback.from_user.id
-  lang = await get_user_language(user_id_cb)
-  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
   parts = callback.data.split("_")
+  # Формат: view_sp_[user_id]_[list_type]_[page]_[lang]
   user_id = parts[2]
   list_type = parts[3]
   page = parts[4]
+  lang = parts[5] if len(parts) > 5 else "ru"
+
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
   try:
     conn = psycopg2.connect(DATABASE_URL)
@@ -314,7 +334,9 @@ async def show_details(callback: CallbackQuery):
   if sp:
     name, gender, age, sobriety, city, username, phone, program_info = sp
     tg_contact = (
-        f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
+        f"@{username}"
+        if username and username not in ("-", "нет")
+        else f"ID: {user_id}"
     )
 
     if lang == "kk":
@@ -333,22 +355,11 @@ async def show_details(callback: CallbackQuery):
     keyboard = [
         [
             InlineKeyboardButton(
-                text=t["btn_back"], callback_data=f"list_{list_type}_{page}"
+                text=t["btn_back"],
+                callback_data=f"list_{list_type}_{page}_{lang}",
             )
         ]
     ]
-
-    current_user_id = callback.from_user.id
-    if current_user_id == int(user_id) or current_user_id in ADMINS:
-      keyboard.insert(
-          0,
-          [
-              InlineKeyboardButton(
-                  text=t["btn_edit"],
-                  callback_data=f"edit_menu_{user_id}_{list_type}_{page}",
-              )
-          ],
-      )
 
     await callback.message.edit_text(
         text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
@@ -357,16 +368,18 @@ async def show_details(callback: CallbackQuery):
     await callback.answer(t["not_found"], show_alert=True)
 
 
-# --- ЗАПОЛНЕНИЕ АНКЕТЫ ---
-@router.callback_query(F.data == "start_sponsor_registration")
+# --- ЗАПОЛНЕНИЕ АНКЕТЫ С СОХРАНЕНИЕМ ЯЗЫКА ---
+@router.callback_query(F.data.startswith("start_sponsor_registration"))
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
   try:
-    lang = await get_user_language(callback.from_user.id)
-    if callback.message.reply_markup:
-        for row in callback.message.reply_markup.inline_keyboard:
-            for btn in row:
-                if btn.callback_data == "start_sponsor_registration" and "толтыру" in btn.text.lower():
-                    lang = "kk"
+    # Достаем язык прямо из callback_data если передан, иначе из базы
+    parts = callback.data.split("_")
+    lang = parts[3] if len(parts) > 3 else None
+
+    if not lang:
+      lang = await get_user_language(callback.from_user.id)
+      if not lang:
+        lang = "ru"
 
     await state.update_data(lang=lang)
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
@@ -527,6 +540,8 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
 async def approve_sponsor(callback: CallbackQuery, bot: Bot):
   target_user_id = int(callback.data.split("_")[2])
   lang = await get_user_language(target_user_id)
+  if not lang:
+    lang = "ru"
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
   try:
@@ -580,6 +595,8 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
 async def decline_sponsor(callback: CallbackQuery, bot: Bot):
   target_user_id = int(callback.data.split("_")[2])
   lang = await get_user_language(target_user_id)
+  if not lang:
+    lang = "ru"
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
   try:
