@@ -1,3 +1,4 @@
+import logging
 import psycopg2
 from aiogram import Bot, F, Router
 from aiogram.filters import StateFilter
@@ -16,11 +17,11 @@ router = Router()
 
 
 class EditSponsorState(StatesGroup):
-  waiting_for_new_value = State()
+    waiting_for_new_value = State()
 
 
 class SponsorForm(StatesGroup):
-  waiting_for_name = State()
+    waiting_for_name = State()
 
 
 # Словари локализации
@@ -100,324 +101,356 @@ SPONSOR_TEXTS = {
 }
 
 
+# ЖЕСТКИЙ ПРИОРИТЕТНЫЙ ПЕРЕХВАТЧИК КНОПКИ СПОНСОРА
+@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу") | F.text.contains("Стать спонсором"))
+async def direct_sponsor_menu_handler(message: Message, state: FSMContext):
+    await state.clear()
+    user_id = message.from_user.id
+    
+    if message.text == "➕ Демеуші болу" or "Демеуші болу" in message.text:
+        lang = "kk"
+    else:
+        lang = await get_user_language(user_id)
+        if not lang:
+            lang = "ru"
+
+    btn_fill = "📝 Демеуші сауалнамасын толтыру" if lang == "kk" else "📝 Заполнить анкету спонсора"
+    btn_back = "🔙 Мәзірге оралу" if lang == "kk" else "🔙 Назад в меню"
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=btn_fill, callback_data="start_sponsor_registration")],
+            [InlineKeyboardButton(text=btn_back, callback_data="back_to_menu")]
+        ]
+    )
+    
+    title = (
+        "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және басқалармен тәжірибе бөлісуге дайын адам."
+        if lang == "kk"
+        else "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другими."
+    )
+    
+    await message.answer(title, reply_markup=keyboard, parse_mode="HTML")
+
+
 @router.callback_query(F.data == "start_sponsor_registration")
 async def start_sponsor_registration_handler(
     callback: CallbackQuery, state: FSMContext
 ):
-  lang = await get_user_language(callback.from_user.id)
-  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    lang = await get_user_language(callback.from_user.id)
+    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
-  await callback.message.delete()
-  await callback.message.answer(t["reg_title"], parse_mode="HTML")
-  await state.set_state(SponsorForm.waiting_for_name)
-  await callback.answer()
+    await callback.message.delete()
+    await callback.message.answer(t["reg_title"], parse_mode="HTML")
+    await state.set_state(SponsorForm.waiting_for_name)
+    await callback.answer()
 
 
 @router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu(event: Message | CallbackQuery):
-  user_id = event.from_user.id
-  lang = await get_user_language(user_id)
+    user_id = event.from_user.id
+    lang = await get_user_language(user_id)
   
-  if isinstance(event, Message) and event.text == "🤝 Демеушілер":
-    lang = "kk"
+    if isinstance(event, Message) and event.text == "🤝 Демеушілер":
+        lang = "kk"
 
-  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text=t["btn_brothers"], callback_data="list_brothers_0"
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["btn_sisters"], callback_data="list_sisters_0"
-              )
-          ],
-      ]
-  )
-  if isinstance(event, Message):
-    await event.answer(t["choose_list"], reply_markup=keyboard)
-  else:
-    await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
-    await event.answer()
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t["btn_brothers"], callback_data="list_brothers_0"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["btn_sisters"], callback_data="list_sisters_0"
+                )
+            ],
+        ]
+    )
+    if isinstance(event, Message):
+        await event.answer(t["choose_list"], reply_markup=keyboard)
+    else:
+        await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
+        await event.answer()
 
 
 @router.callback_query(F.data.startswith(("list_brothers_", "list_sisters_")))
 async def show_list_page(callback: CallbackQuery):
-  user_id = callback.from_user.id
-  lang = await get_user_language(user_id)
-  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    user_id = callback.from_user.id
+    lang = await get_user_language(user_id)
+    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
-  parts = callback.data.split("_")
-  list_type = parts[1]
-  page = int(parts[2])
+    parts = callback.data.split("_")
+    list_type = parts[1]
+    page = int(parts[2])
 
-  gender_filter = (
-      "OR gender ILIKE '%муж%'"
-      if list_type == "brothers"
-      else "OR gender ILIKE '%жен%'"
-  )
+    gender_filter = (
+        "OR gender ILIKE '%муж%'"
+        if list_type == "brothers"
+        else "OR gender ILIKE '%жен%'"
+    )
   
-  label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
-  db_keyword = "брат" if list_type == "brothers" else "сестр"
+    label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
+    db_keyword = "брат" if list_type == "brothers" else "сестр"
 
-  conn = psycopg2.connect(DATABASE_URL)
-  cur = conn.cursor()
-  cur.execute(
-      f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE gender"
-      f" ILIKE '%{db_keyword}%' {gender_filter};"
-  )
-  all_sponsors = cur.fetchall()
-  cur.close()
-  conn.close()
-
-  if not all_sponsors:
-    await callback.answer(
-        t["empty_list"].format(label=label), show_alert=True
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE gender"
+        f" ILIKE '%{db_keyword}%' {gender_filter};"
     )
-    return
+    all_sponsors = cur.fetchall()
+    cur.close()
+    conn.close()
 
-  PER_PAGE = 5
-  total_pages = (len(all_sponsors) + PER_PAGE - 1) // PER_PAGE
-  start_idx = page * PER_PAGE
-  end_idx = start_idx + PER_PAGE
-  current_sponsors = all_sponsors[start_idx:end_idx]
-
-  keyboard = []
-  for uid, name, age, city, sobriety in current_sponsors:
-    city_name = city if city else t["default_city"]
-    button_text = f"{name}, {age} | {city_name} | {sobriety}"
-    keyboard.append([
-        InlineKeyboardButton(
-            text=button_text,
-            callback_data=f"view_sp_{uid}_{list_type}_{page}",
+    if not all_sponsors:
+        await callback.answer(
+            t["empty_list"].format(label=label), show_alert=True
         )
-    ])
+        return
 
-  nav_buttons = []
-  if page > 0:
-    nav_buttons.append(
-        InlineKeyboardButton(
-            text=t["btn_back"], callback_data=f"list_{list_type}_{page - 1}"
+    PER_PAGE = 5
+    total_pages = (len(all_sponsors) + PER_PAGE - 1) // PER_PAGE
+    start_idx = page * PER_PAGE
+    end_idx = start_idx + PER_PAGE
+    current_sponsors = all_sponsors[start_idx:end_idx]
+
+    keyboard = []
+    for uid, name, age, city, sobriety in current_sponsors:
+        city_name = city if city else t["default_city"]
+        button_text = f"{name}, {age} | {city_name} | {sobriety}"
+        keyboard.append([
+            InlineKeyboardButton(
+                text=button_text,
+                callback_data=f"view_sp_{uid}_{list_type}_{page}",
+            )
+        ])
+
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text=t["btn_back"], callback_data=f"list_{list_type}_{page - 1}"
+            )
         )
+    if end_idx < len(all_sponsors):
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text=t["btn_forward"], callback_data=f"list_{list_type}_{page + 1}"
+            )
+        )
+
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+
+    keyboard.append(
+        [InlineKeyboardButton(text=t["btn_back"], callback_data="menu_sponsors")]
     )
-  if end_idx < len(all_sponsors):
-    nav_buttons.append(
-        InlineKeyboardButton(
-            text=t["btn_forward"], callback_data=f"list_{list_type}_{page + 1}"
-        )
+
+    await callback.message.edit_text(
+        f"📖 ({label}) — {page + 1} / {total_pages}:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
     )
-
-  if nav_buttons:
-    keyboard.append(nav_buttons)
-
-  keyboard.append(
-      [InlineKeyboardButton(text=t["btn_back"], callback_data="menu_sponsors")]
-  )
-
-  await callback.message.edit_text(
-      f"📖 ({label}) — {page + 1} / {total_pages}:",
-      reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-  )
 
 
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
-  user_id_cb = callback.from_user.id
-  lang = await get_user_language(user_id_cb)
-  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    user_id_cb = callback.from_user.id
+    lang = await get_user_language(user_id_cb)
+    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
-  parts = callback.data.split("_")
-  user_id = parts[2]
-  list_type = parts[3]
-  page = parts[4]
+    parts = callback.data.split("_")
+    user_id = parts[2]
+    list_type = parts[3]
+    page = parts[4]
 
-  conn = psycopg2.connect(DATABASE_URL)
-  cur = conn.cursor()
-  cur.execute(
-      "SELECT name, gender, age, sobriety, city, username, phone, program_info"
-      " FROM sponsors WHERE user_id = %s;",
-      (user_id,),
-  )
-  sp = cur.fetchone()
-  cur.close()
-  conn.close()
-
-  if sp:
-    name, gender, age, sobriety, city, username, phone, program_info = sp
-    tg_contact = (
-        f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, gender, age, sobriety, city, username, phone, program_info"
+        " FROM sponsors WHERE user_id = %s;",
+        (user_id,),
     )
+    sp = cur.fetchone()
+    cur.close()
+    conn.close()
 
-    if lang == "kk":
-      text = (
-          f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Трэзвость мерзімі: {sobriety}\n📍"
-          f" Қала: {city}\n📖 Тәжірибе: {program_info}\n✈️ Telegram:"
-          f" {tg_contact}\n📞 Телефон: {phone}"
-      )
-    else:
-      text = (
-          f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
-          f" Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
-          f" {tg_contact}\n📞 Телефон: {phone}"
-      )
+    if sp:
+        name, gender, age, sobriety, city, username, phone, program_info = sp
+        tg_contact = (
+            f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
+        )
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                text=t["btn_back"], callback_data=f"list_{list_type}_{page}"
+        if lang == "kk":
+            text = (
+                f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Трэзвость мерзімі: {sobriety}\n📍"
+                f" Қала: {city}\n📖 Тәжірибе: {program_info}\n✈️ Telegram:"
+                f" {tg_contact}\n📞 Телефон: {phone}"
             )
+        else:
+            text = (
+                f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
+                f" Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
+                f" {tg_contact}\n📞 Телефон: {phone}"
+            )
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    text=t["btn_back"], callback_data=f"list_{list_type}_{page}"
+                )
+            ]
         ]
-    ]
 
-    current_user_id = callback.from_user.id
-    if current_user_id == int(user_id) or current_user_id in ADMINS:
-      keyboard.insert(
-          0,
-          [
-              InlineKeyboardButton(
-                  text=t["btn_edit"],
-                  callback_data=f"edit_menu_{user_id}_{list_type}_{page}",
-              )
-          ],
-      )
+        current_user_id = callback.from_user.id
+        if current_user_id == int(user_id) or current_user_id in ADMINS:
+            keyboard.insert(
+                0,
+                [
+                    InlineKeyboardButton(
+                        text=t["btn_edit"],
+                        callback_data=f"edit_menu_{user_id}_{list_type}_{page}",
+                    )
+                ],
+            )
 
-    await callback.message.edit_text(
-        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
-    )
-  else:
-    await callback.answer(t["not_found"], show_alert=True)
+        await callback.message.edit_text(
+            text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+        )
+    else:
+        await callback.answer(t["not_found"], show_alert=True)
 
 
 @router.callback_query(F.data.startswith("edit_menu_"))
 async def edit_menu(callback: CallbackQuery):
-  lang = await get_user_language(callback.from_user.id)
-  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    lang = await get_user_language(callback.from_user.id)
+    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
-  parts = callback.data.split("_")
-  user_id = parts[2]
-  list_type = parts[3]
-  page = parts[4]
+    parts = callback.data.split("_")
+    user_id = parts[2]
+    list_type = parts[3]
+    page = parts[4]
 
-  if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-    await callback.answer(t["access_denied"], show_alert=True)
-    return
+    if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
+        await callback.answer(t["access_denied"], show_alert=True)
+        return
 
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text=t["edit_age"],
-                  callback_data=f"edit_field_{user_id}_age_{list_type}_{page}",
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["edit_sobriety"],
-                  callback_data=(
-                      f"edit_field_{user_id}_sobriety_{list_type}_{page}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["edit_city"],
-                  callback_data=f"edit_field_{user_id}_city_{list_type}_{page}",
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["edit_phone"],
-                  callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}",
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["edit_program"],
-                  callback_data=(
-                      f"edit_field_{user_id}_programinfo_{list_type}_{page}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["btn_back"],
-                  callback_data=f"view_sp_{user_id}_{list_type}_{page}",
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(t["edit_prompt"], reply_markup=keyboard)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t["edit_age"],
+                    callback_data=f"edit_field_{user_id}_age_{list_type}_{page}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_sobriety"],
+                    callback_data=(
+                        f"edit_field_{user_id}_sobriety_{list_type}_{page}"
+                    ),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_city"],
+                    callback_data=f"edit_field_{user_id}_city_{list_type}_{page}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_phone"],
+                    callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_program"],
+                    callback_data=(
+                        f"edit_field_{user_id}_programinfo_{list_type}_{page}"
+                    ),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["btn_back"],
+                    callback_data=f"view_sp_{user_id}_{list_type}_{page}",
+                )
+            ],
+        ]
+    )
+    await callback.message.edit_text(t["edit_prompt"], reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("edit_field_"))
 async def start_editing_field(callback: CallbackQuery, state: FSMContext):
-  lang = await get_user_language(callback.from_user.id)
-  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    lang = await get_user_language(callback.from_user.id)
+    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
-  parts = callback.data.split("_")
-  user_id = parts[2]
-  field_name = parts[3]
-  list_type = parts[4]
-  page = parts[5]
+    parts = callback.data.split("_")
+    user_id = parts[2]
+    field_name = parts[3]
+    list_type = parts[4]
+    page = parts[5]
 
-  if field_name == "programinfo":
-    field_name = "program_info"
+    if field_name == "programinfo":
+        field_name = "program_info"
 
-  if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-    await callback.answer(t["access_denied_field"], show_alert=True)
-    return
+    if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
+        await callback.answer(t["access_denied_field"], show_alert=True)
+        return
 
-  await state.update_data(
-      target_user_id=user_id,
-      field_name=field_name,
-      list_type=list_type,
-      page=page,
-  )
-  await state.set_state(EditSponsorState.waiting_for_new_value)
+    await state.update_data(
+        target_user_id=user_id,
+        field_name=field_name,
+        list_type=list_type,
+        page=page,
+    )
+    await state.set_state(EditSponsorState.waiting_for_new_value)
 
-  field_desc = t["fields"].get(field_name, "значение")
-  prompt_prefix = "✍️ Жазыңыз: " if lang == "kk" else "✍️ Напишите "
-  await callback.message.answer(f"{prompt_prefix}{field_desc}:")
-  await callback.answer()
+    field_desc = t["fields"].get(field_name, "значение")
+    prompt_prefix = "✍️ Жазыңыз: " if lang == "kk" else "✍️ Напишите "
+    await callback.message.answer(f"{prompt_prefix}{field_desc}:")
+    await callback.answer()
 
 
 @router.message(EditSponsorState.waiting_for_new_value)
 async def save_edited_field(message: Message, state: FSMContext):
-  lang = await get_user_language(message.from_user.id)
-  t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    lang = await get_user_language(message.from_user.id)
+    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
 
-  new_value = message.text.strip()
-  data = await state.get_data()
-  target_user_id = data.get("target_user_id")
-  field_name = data.get("field_name")
+    new_value = message.text.strip()
+    data = await state.get_data()
+    target_user_id = data.get("target_user_id")
+    field_name = data.get("field_name")
 
-  allowed_fields = ["age", "sobriety", "city", "phone", "program_info"]
-  if field_name not in allowed_fields:
-    await message.answer(t["field_error"])
-    await state.clear()
-    return
+    allowed_fields = ["age", "sobriety", "city", "phone", "program_info"]
+    if field_name not in allowed_fields:
+        await message.answer(t["field_error"])
+        await state.clear()
+        return
 
-  if field_name == "age":
-    if not new_value.isdigit() or not (18 <= int(new_value) <= 100):
-      await message.answer(t["age_error"])
-      return
+    if field_name == "age":
+        if not new_value.isdigit() or not (18 <= int(new_value) <= 100):
+            await message.answer(t["age_error"])
+            return
 
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    query = f"UPDATE sponsors SET {field_name} = %s WHERE user_id = %s;"
-    cur.execute(query, (new_value, target_user_id))
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        query = f"UPDATE sponsors SET {field_name} = %s WHERE user_id = %s;"
+        cur.execute(query, (new_value, target_user_id))
+        conn.commit()
+        cur.close()
+        conn.close()
 
-    await message.answer(t["success_update"])
-    await state.clear()
-  except Exception as e:
-    print(f"Ошибка при обновлении: {e}")
-    await message.answer(t["error_update"])
-    await state.clear()
+        await message.answer(t["success_update"])
+        await state.clear()
+    except Exception as e:
+        print(f"Ошибка при обновлении: {e}")
+        await message.answer(t["error_update"])
+        await state.clear()
