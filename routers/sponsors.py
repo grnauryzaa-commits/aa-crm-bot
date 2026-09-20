@@ -18,7 +18,7 @@ from routers.states import SponsorForm
 
 router = Router()
 
-# Словари локализации для анкеты (русский / казахский)
+# Словари локализации для анкеты и списков (русский / казахский)
 FORM_TEXTS = {
     "ru": {
         "btn_become": "➕ Стать спонсором",
@@ -53,6 +53,18 @@ FORM_TEXTS = {
         "fallback_become": "➕ Стать спонсором",
         "fallback_list": "📋 Список спонсоров",
         "fallback_main": "🏠 Главное меню",
+        "choose_list": "👥 Выберите список:",
+        "empty_list": "Список {label} пока пуст.",
+        "not_found": "⚠️ Спонсор не найден в базе данных.",
+        "access_denied": "⚠️ Вы можете редактировать только свою анкету!",
+        "btn_brothers": "👦 Братья",
+        "btn_sisters": "👧 Сестры",
+        "btn_back": "⬅️ Назад",
+        "btn_forward": "Вперед ➡️",
+        "btn_edit": "✏️ Редактировать анкету",
+        "label_brothers": "Братья",
+        "label_sisters": "Сестры",
+        "default_city": "Город не указан",
     },
     "kk": {
         "btn_become": "➕ Демеуші болу",
@@ -91,6 +103,18 @@ FORM_TEXTS = {
         "fallback_become": "➕ Демеуші болу",
         "fallback_list": "📋 Демеушілер тізімі",
         "fallback_main": "🏠 Басты мәзір",
+        "choose_list": "👥 Тізімді таңдаңыз:",
+        "empty_list": "{label} тізімі әзірге бос.",
+        "not_found": "⚠️ Демеуші деректер базасынан табылмады.",
+        "access_denied": "⚠️ Сіз тек өз сауалнамаңызды өңдей аласыз!",
+        "btn_brothers": "👦 Бауырлар",
+        "btn_sisters": "👧 Әпкелер",
+        "btn_back": "⬅️ Артқа",
+        "btn_forward": "Алға ➡️",
+        "btn_edit": "✏️ Сауалнаманы өңдеу",
+        "label_brothers": "Бауырлар",
+        "label_sisters": "Әпкелер",
+        "default_city": "Қала көрсетілмеген",
     },
 }
 
@@ -109,14 +133,19 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
   )
 
 
+# --- ПЕРЕХВАТ КНОПКИ СТАТЬ СПОНСОРОМ ---
 @router.message(
-    F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
+    F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу")
 )
 async def start_form_text(message: Message, state: FSMContext):
   try:
-    lang = await get_user_language(message.from_user.id)
-    if message.text == "➕ Деemeуші болу" or "Демеуші" in message.text:
+    if message.text and "Демеуші болу" in message.text:
         lang = "kk"
+    else:
+        lang = await get_user_language(message.from_user.id)
+        if not lang:
+            lang = "ru"
+
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
     keyboard = InlineKeyboardMarkup(
@@ -136,11 +165,203 @@ async def start_form_text(message: Message, state: FSMContext):
     traceback.print_exc()
 
 
+# --- МЕНЮ СПОНСОРОВ (СПИСКИ БРАТЬЕВ И СЕСТЕР) ---
+@router.message(
+    F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}) | F.text.contains("Демеушілер")
+)
+@router.callback_query(F.data == "menu_sponsors")
+async def sponsors_menu(event: Message | CallbackQuery):
+  user_id = event.from_user.id
+  if isinstance(event, Message) and event.text and "Демеушілер" in event.text:
+      lang = "kk"
+  else:
+      lang = await get_user_language(user_id)
+      if not lang:
+          lang = "ru"
+
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["btn_brothers"], callback_data="list_brothers_0"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["btn_sisters"], callback_data="list_sisters_0"
+              )
+          ],
+      ]
+  )
+  if isinstance(event, Message):
+    await event.answer(t["choose_list"], reply_markup=keyboard)
+  else:
+    await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
+    await event.answer()
+
+
+@router.callback_query(F.data.startswith(("list_brothers_", "list_sisters_")))
+async def show_list_page(callback: CallbackQuery):
+  user_id = callback.from_user.id
+  lang = await get_user_language(user_id)
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  parts = callback.data.split("_")
+  list_type = parts[1]
+  page = int(parts[2])
+
+  gender_filter = (
+      "OR gender ILIKE '%муж%'"
+      if list_type == "brothers"
+      else "OR gender ILIKE '%жен%'"
+  )
+  
+  label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
+  db_keyword = "брат" if list_type == "brothers" else "сестр"
+
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE gender"
+        f" ILIKE '%{db_keyword}%' {gender_filter};"
+    )
+    all_sponsors = cur.fetchall()
+    cur.close()
+    conn.close()
+  except Exception as e:
+    print(f"Ошибка БД в show_list_page: {e}")
+    all_sponsors = []
+
+  if not all_sponsors:
+    await callback.answer(
+        t["empty_list"].format(label=label), show_alert=True
+    )
+    return
+
+  PER_PAGE = 5
+  total_pages = (len(all_sponsors) + PER_PAGE - 1) // PER_PAGE
+  start_idx = page * PER_PAGE
+  end_idx = start_idx + PER_PAGE
+  current_sponsors = all_sponsors[start_idx:end_idx]
+
+  keyboard = []
+  for uid, name, age, city, sobriety in current_sponsors:
+    city_name = city if city else t["default_city"]
+    button_text = f"{name}, {age} | {city_name} | {sobriety}"
+    keyboard.append([
+        InlineKeyboardButton(
+            text=button_text,
+            callback_data=f"view_sp_{uid}_{list_type}_{page}",
+        )
+    ])
+
+  nav_buttons = []
+  if page > 0:
+    nav_buttons.append(
+        InlineKeyboardButton(
+            text=t["btn_back"], callback_data=f"list_{list_type}_{page - 1}"
+        )
+    )
+  if end_idx < len(all_sponsors):
+    nav_buttons.append(
+        InlineKeyboardButton(
+            text=t["btn_forward"], callback_data=f"list_{list_type}_{page + 1}"
+        )
+    )
+
+  if nav_buttons:
+    keyboard.append(nav_buttons)
+
+  keyboard.append(
+      [InlineKeyboardButton(text=t["btn_back"], callback_data="menu_sponsors")]
+  )
+
+  await callback.message.edit_text(
+      f"📖 ({label}) — {page + 1} / {total_pages}:",
+      reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+  )
+
+
+@router.callback_query(F.data.startswith("view_sp_"))
+async def show_details(callback: CallbackQuery):
+  user_id_cb = callback.from_user.id
+  lang = await get_user_language(user_id_cb)
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  parts = callback.data.split("_")
+  user_id = parts[2]
+  list_type = parts[3]
+  page = parts[4]
+
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, gender, age, sobriety, city, username, phone, program_info"
+        " FROM sponsors WHERE user_id = %s;",
+        (user_id,),
+    )
+    sp = cur.fetchone()
+    cur.close()
+    conn.close()
+  except Exception as e:
+    print(f"Ошибка БД в show_details: {e}")
+    sp = None
+
+  if sp:
+    name, gender, age, sobriety, city, username, phone, program_info = sp
+    tg_contact = (
+        f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
+    )
+
+    if lang == "kk":
+      text = (
+          f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Трэзвость мерзімі: {sobriety}\n📍"
+          f" Қала: {city}\n📖 Тәжірибе: {program_info}\n✈️ Telegram:"
+          f" {tg_contact}\n📞 Телефон: {phone}"
+      )
+    else:
+      text = (
+          f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
+          f" Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
+          f" {tg_contact}\n📞 Телефон: {phone}"
+      )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                text=t["btn_back"], callback_data=f"list_{list_type}_{page}"
+            )
+        ]
+    ]
+
+    current_user_id = callback.from_user.id
+    if current_user_id == int(user_id) or current_user_id in ADMINS:
+      keyboard.insert(
+          0,
+          [
+              InlineKeyboardButton(
+                  text=t["btn_edit"],
+                  callback_data=f"edit_menu_{user_id}_{list_type}_{page}",
+              )
+          ],
+      )
+
+    await callback.message.edit_text(
+        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
+  else:
+    await callback.answer(t["not_found"], show_alert=True)
+
+
+# --- ЗАПОЛНЕНИЕ АНКЕТЫ ---
 @router.callback_query(F.data == "start_sponsor_registration")
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
   try:
     lang = await get_user_language(callback.from_user.id)
-    
     if callback.message.reply_markup:
         for row in callback.message.reply_markup.inline_keyboard:
             for btn in row:
@@ -301,6 +522,7 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
   await state.clear()
 
 
+# --- МОДЕРАЦИЯ АДМИНИСТРАТОРОМ ---
 @router.callback_query(F.data.startswith("approve_sp_"))
 async def approve_sponsor(callback: CallbackQuery, bot: Bot):
   target_user_id = int(callback.data.split("_")[2])
