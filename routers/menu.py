@@ -6,7 +6,12 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from config import DATABASE_URL, SERVANT_CHAT_IDS
 from database import get_user_language, set_user_language
-from routers.reflections import EVENING_PRAYER_TEXT, MORNING_PRAYER_TEXT
+from routers.reflections import (
+    EVENING_PRAYER_TEXT_KK,
+    EVENING_PRAYER_TEXT_RU,
+    MORNING_PRAYER_TEXT_KK,
+    MORNING_PRAYER_TEXT_RU,
+)
 import psycopg2
 
 from .ai_helper import ask_ai_for_beginner
@@ -190,6 +195,8 @@ def format_reflection_text(text, today):
 async def cmd_start(message: types.Message, state: FSMContext):
   await state.clear()
   lang = await get_user_language(message.from_user.id)
+  if not lang:
+    lang = "ru"
   await message.answer(
       TEXTS[lang]["start_greeting"],
       reply_markup=get_main_menu_keyboard(lang),
@@ -205,6 +212,8 @@ async def cmd_start(message: types.Message, state: FSMContext):
 async def cmd_main_menu(message: types.Message, state: FSMContext):
   await state.clear()
   lang = await get_user_language(message.from_user.id)
+  if not lang:
+    lang = "ru"
   await message.answer(
       TEXTS[lang]["menu"],
       reply_markup=get_main_menu_keyboard(lang),
@@ -215,6 +224,8 @@ async def cmd_main_menu(message: types.Message, state: FSMContext):
 @router.message(F.text.in_({"🌐 Язык: Русский", "🌐 Тіл: Қазақша"}))
 async def language_menu_handler(message: types.Message):
   lang = await get_user_language(message.from_user.id)
+  if not lang:
+    lang = "ru"
   keyboard = types.InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -297,6 +308,8 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
 async def show_daily_reflection(message: types.Message):
   today = datetime.now()
   lang = await get_user_language(message.from_user.id)
+  if not lang:
+    lang = "ru"
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -332,6 +345,8 @@ async def show_daily_reflection(message: types.Message):
 @router.message(F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"}))
 async def step_eleven_menu(message: types.Message):
   lang = await get_user_language(message.from_user.id)
+  if not lang:
+    lang = "ru"
   t = TEXTS[lang]
   keyboard = types.InlineKeyboardMarkup(
       inline_keyboard=[
@@ -352,13 +367,21 @@ async def step_eleven_menu(message: types.Message):
 
 @router.callback_query(F.data == "get_morning_prayer")
 async def send_morning_callback(callback: types.CallbackQuery):
-  await callback.message.answer(MORNING_PRAYER_TEXT, parse_mode="HTML")
+  lang = await get_user_language(callback.from_user.id)
+  if not lang:
+    lang = "ru"
+  text = MORNING_PRAYER_TEXT_KK if lang == "kk" else MORNING_PRAYER_TEXT_RU
+  await callback.message.answer(text, parse_mode="HTML")
   await callback.answer()
 
 
 @router.callback_query(F.data == "get_evening_prayer")
 async def send_evening_callback(callback: types.CallbackQuery):
-  await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
+  lang = await get_user_language(callback.from_user.id)
+  if not lang:
+    lang = "ru"
+  text = EVENING_PRAYER_TEXT_KK if lang == "kk" else EVENING_PRAYER_TEXT_RU
+  await callback.message.answer(text, parse_mode="HTML")
   await callback.answer()
 
 
@@ -366,6 +389,8 @@ async def send_evening_callback(callback: types.CallbackQuery):
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu_handler(event: types.Message | types.CallbackQuery):
   lang = await get_user_language(event.from_user.id)
+  if not lang:
+    lang = "ru"
   t = TEXTS[lang]
   keyboard = types.InlineKeyboardMarkup(
       inline_keyboard=[
@@ -577,6 +602,8 @@ async def callback_schedule(callback: types.CallbackQuery):
 @router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
 async def help_section_handler(message: types.Message):
   lang = await get_user_language(message.from_user.id)
+  if not lang:
+    lang = "ru"
   t = TEXTS[lang]
   keyboard = types.InlineKeyboardMarkup(
       inline_keyboard=[
@@ -617,6 +644,8 @@ async def back_to_menu_callback(callback: types.CallbackQuery):
 async def call_servant_callback(callback: types.CallbackQuery):
   user = callback.from_user
   lang = await get_user_language(user.id)
+  if not lang:
+    lang = "ru"
   t = TEXTS[lang]
   user_link = f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
   username_text = f" (@{user.username})" if user.username else ""
@@ -628,61 +657,10 @@ async def call_servant_callback(callback: types.CallbackQuery):
   for servant_id in SERVANT_CHAT_IDS:
     try:
       await callback.bot.send_message(
-          chat_id=servant_id, text=alert_text, parse_mode="HTML"
+          servant_id, alert_text, parse_mode="HTML"
       )
     except Exception as e:
       logging.error(f"Не удалось отправить уведомление служащему: {e}")
 
   await callback.message.answer(t["servant_success"])
   await callback.answer()
-
-
-@router.message(StateFilter(None), F.text)
-async def handle_beginner_questions(message: types.Message, state: FSMContext):
-  menu_buttons = [
-      "📖 Ежедневные размышления",
-      "🙏 11 Шаг",
-      "➕ Стать спонсором",
-      "🤝 Спонсоры",
-      "📅 Расписание",
-      "❓ Помощь",
-      "🏠 Главное меню",
-      "Главное меню",
-      "📖 Күнделікті ой-толғаулар",
-      "🙏 11 Қадам",
-      "➕ Демеуші болу",
-      "🤝 Демеушілер",
-      "📅 Кесте",
-      "❓ Көмек",
-      "🏠 Басты мәзір",
-      "Басты мәзір",
-      "🌐 Язык: Русский",
-      "🌐 Тіл: Қазақша",
-  ]
-  if message.text in menu_buttons:
-    return
-
-  await message.bot.send_chat_action(
-      chat_id=message.chat.id, action="typing"
-  )
-  ai_response = await ask_ai_for_beginner(message.from_user.id, message.text)
-
-  lang = await get_user_language(message.from_user.id)
-  help_text_btn = (
-      "👤 Позвать живого служащего"
-      if lang == "ru"
-      else "👤 Тірі қызметкерді шақыру"
-  )
-
-  servant_keyboard = types.InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              types.InlineKeyboardButton(
-                  text=help_text_btn, callback_data="call_servant"
-              )
-          ]
-      ]
-  )
-  await message.answer(
-      ai_response, parse_mode="Markdown", reply_markup=servant_keyboard
-  )
