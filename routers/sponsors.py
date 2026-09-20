@@ -1,456 +1,383 @@
-import logging
+import traceback
+import html
 import psycopg2
 from aiogram import Bot, F, Router
-from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    KeyboardButton,
     Message,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from config import ADMINS, DATABASE_URL
-from database import get_user_language
+from database import get_user_language, save_sponsor_draft
+from routers.states import SponsorForm
 
 router = Router()
 
-
-class EditSponsorState(StatesGroup):
-    waiting_for_new_value = State()
-
-
-class SponsorForm(StatesGroup):
-    waiting_for_name = State()
-
-
-# Словари локализации
-SPONSOR_TEXTS = {
+# Словари локализации для анкеты (русский / казахский)
+FORM_TEXTS = {
     "ru": {
-        "reg_title": (
-            "📝 <b>Регистрация анкеты спонсора</b>\n\nПожалуйста, введите ваше"
-            " имя (или как к вам обращаться в сообществе):"
+        "btn_become": "➕ Стать спонсором",
+        "menu_title": (
+            "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который"
+            " прошел Шаги и готов делиться опытом с другими. Если вы"
+            " чувствуете в себе силы и имеете устойчивую трезвость, вы можете"
+            " зарегистрироваться как спонсор."
         ),
-        "choose_list": "👥 Выберите список:",
-        "empty_list": "Список {label} пока пуст.",
-        "not_found": "⚠️ Спонсор не найден в базе данных.",
-        "access_denied": "⚠️ Вы можете редактировать только свою анкету!",
-        "success_update": "✅ Данные успешно обновлены!",
-        "error_update": "❌ Произошла ошибка при сохранении.",
-        "edit_prompt": "⚙️ Выберите, какое поле вы хотите изменить:",
-        "btn_brothers": "👦 Братья",
-        "btn_sisters": "👧 Сестры",
-        "btn_back": "⬅️ Назад",
-        "btn_forward": "Вперед ➡️",
-        "btn_edit": "✏️ Редактировать анкету",
-        "edit_age": "📅 Возраст",
-        "edit_sobriety": "🕊 Срок трезвости",
-        "edit_city": "📍 Город",
-        "edit_phone": "📞 Телефон",
-        "edit_program": "📖 Опыт",
-        "access_denied_field": "⚠️ Доступ запрещен!",
-        "age_error": "⚠️ Возраст должен состоять только из цифр (от 18 до 100). Попробуйте еще раз:",
-        "field_error": "Ошибка поля.",
-        "label_brothers": "Братья",
-        "label_sisters": "Сестры",
-        "default_city": "Город не указан",
-        "fields": {
-            "age": "новый возраст (цифрой от 18 до 100)",
-            "sobriety": "новый срок трезвости",
-            "city": "новый город",
-            "phone": "новый номер телефона",
-            "program_info": "новую информацию об опыте",
-        },
+        "btn_fill": "📝 Заполнить анкету спонсора",
+        "ask_name": "👤 Напиши свое имя:",
+        "ask_gender": "Какой твой пол? (Брат / Сестра)",
+        "ask_age": "📅 Напиши свой возраст (цифрой):",
+        "ask_sobriety": "🕊 Какой у тебя срок трезвости? (например: 3 года 2 месяца)",
+        "ask_city": "📍 Из какого ты города?",
+        "ask_program": (
+            "📖 Напиши коротко о своем опыте по программе / спонсорстве:"
+        ),
+        "ask_phone": "📞 Напиши свой номер телефона для связи:",
+        "success_draft": (
+            "✅ Твоя анкета успешно отправлена на модерацию администратору!"
+        ),
+        "admin_title": "🔔 ЗАЯВКА НА РЕГИСТРАЦИЮ СПОНСОРА",
+        "admin_approve": "✅ Одобрить карточку",
+        "admin_decline": "❌ Отклонить",
+        "approved_alert": "Анкета одобрена!",
+        "declined_alert": "Анкета отклонена.",
+        "user_approved": "🎉 Поздравляем! Ваша анкета спонсора одобрена.",
+        "user_declined": (
+            "❌ К сожалению, ваша анкета спонсора была отклонена."
+        ),
+        "fallback_become": "➕ Стать спонсором",
+        "fallback_list": "📋 Список спонсоров",
+        "fallback_main": "🏠 Главное меню",
     },
     "kk": {
-        "reg_title": (
-            "📝 <b>Демеуші сауалнамасын тіркеу</b>\n\nАтыңызды (немесе"
-            " қауымдастықта қалай атау керек екенін) енгізіңіз:"
+        "btn_become": "➕ Демеуші болу",
+        "menu_title": (
+            "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және"
+            " басқалармен тәжірибе бөлісуге дайын адам. Егер сіз өзіңізде күш"
+            " сезінсеңіз және тұрақты тазалық мерзіміңіз болса, демеуші ретінде"
+            " тіркеле аласыз."
         ),
-        "choose_list": "👥 Тізімді таңдаңыз:",
-        "empty_list": "{label} тізімі әзірге бос.",
-        "not_found": "⚠️ Демеуші деректер базасынан табылмады.",
-        "access_denied": "⚠️ Сіз тек өз сауалнамаңызды өңдей аласыз!",
-        "success_update": "✅ Деректер сәтті жаңартылды!",
-        "error_update": "❌ Сақтау кезінде қате орын алды.",
-        "edit_prompt": "⚙️ Өзгерткіңіз келетін өрісті таңдаңыз:",
-        "btn_brothers": "👦 Бауырлар",
-        "btn_sisters": "👧 Әпкелер",
-        "btn_back": "⬅️ Артқа",
-        "btn_forward": "Алға ➡️",
-        "btn_edit": "✏️ Сауалнаманы өңдеу",
-        "edit_age": "📅 Жасы",
-        "edit_sobriety": "🕊 Трэзвость мерзімі",
-        "edit_city": "📍 Қала",
-        "edit_phone": "📞 Телефон",
-        "edit_program": "📖 Тәжірибе",
-        "access_denied_field": "⚠️ Қолжетімсіз!",
-        "age_error": "⚠️ Жас тек цифрлардан тұруы тиіс (18 бен 100 аралығында). Қайталап көріңіз:",
-        "field_error": "Өріс қатесі.",
-        "label_brothers": "Бауырлар",
-        "label_sisters": "Әпкелер",
-        "default_city": "Қала көрсетілмеген",
-        "fields": {
-            "age": "жаңа жас (18 бен 100 аралығындағы сан)",
-            "sobriety": "жаңа сабыр/тазалық мерзімі",
-            "city": "жаңа қала",
-            "phone": "жаңа телефон нөмірі",
-            "program_info": "тәжірибе туралы жаңа ақпарат",
-        },
+        "btn_fill": "📝 Демеуші сауалнамасын толтыру",
+        "ask_name": "👤 Атыңызды жазыңыз:",
+        "ask_gender": "Жынысыңыз қандай? (Бауыр / Әпке)",
+        "ask_age": "📅 Жасыңызды жазыңыз (санмен):",
+        "ask_sobriety": (
+            "🕊 Тазалық мерзіміңіз қандай? (мысалы: 3 жыл 2 ай)"
+        ),
+        "ask_city": "📍 Қай қаладансыз?",
+        "ask_program": (
+            "📖 Бағдарлама/демеушілік тәжірибеңіз туралы қысқаша жазыңыз:"
+        ),
+        "ask_phone": "📞 Байланыс үшін телефон нөміріңізді жазыңыз:",
+        "success_draft": (
+            "✅ Сіздің сауалнамаңыз әкімшіге модерацияға сәтті жіберілді!"
+        ),
+        "admin_title": "🔔 ДЕМЕУШІНІ ТІРКЕУ ӨТІНІШІ",
+        "admin_approve": "✅ Карточканы мақұлдау",
+        "admin_decline": "❌ Бас тарту",
+        "approved_alert": "Сауалнама мақұлданды!",
+        "declined_alert": "Сауалнама қабылданбады.",
+        "user_approved": (
+            "🎉 Құттықтаймыз! Сіздің демеуші сауалнамаңыз мақұлданды."
+        ),
+        "user_declined": (
+            "❌ Өкінішке орай, сіздің демеуші сауалнамаңыз қабылданбады."
+        ),
+        "fallback_become": "➕ Демеуші болу",
+        "fallback_list": "📋 Демеушілер тізімі",
+        "fallback_main": "🏠 Басты мәзір",
     },
 }
 
 
-# ЖЕСТКИЙ ПРИОРИТЕТНЫЙ ПЕРЕХВАТЧИК КНОПКИ СПОНСОРА
-@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу") | F.text.contains("Стать спонсором"))
-async def direct_sponsor_menu_handler(message: Message, state: FSMContext):
-    await state.clear()
-    user_id = message.from_user.id
-    
-    if message.text == "➕ Демеуші болу" or "Демеуші болу" in message.text:
+def get_fallback_menu_keyboard(lang: str = "ru"):
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+  return ReplyKeyboardMarkup(
+      keyboard=[
+          [
+              KeyboardButton(text=t["fallback_become"]),
+              KeyboardButton(text=t["fallback_list"]),
+          ],
+          [KeyboardButton(text=t["fallback_main"])],
+      ],
+      resize_keyboard=True,
+  )
+
+
+@router.message(
+    F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
+)
+async def start_form_text(message: Message, state: FSMContext):
+  try:
+    lang = await get_user_language(message.from_user.id)
+    if message.text == "➕ Деemeуші болу" or "Демеуші" in message.text:
         lang = "kk"
-    else:
-        lang = await get_user_language(user_id)
-        if not lang:
-            lang = "ru"
-
-    btn_fill = "📝 Демеуші сауалнамасын толтыру" if lang == "kk" else "📝 Заполнить анкету спонсора"
-    btn_back = "🔙 Мәзірге оралу" if lang == "kk" else "🔙 Назад в меню"
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=btn_fill, callback_data="start_sponsor_registration")],
-            [InlineKeyboardButton(text=btn_back, callback_data="back_to_menu")]
-        ]
-    )
-    
-    title = (
-        "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және басқалармен тәжірибе бөлісуге дайын адам."
-        if lang == "kk"
-        else "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другими."
-    )
-    
-    await message.answer(title, reply_markup=keyboard, parse_mode="HTML")
-
-
-@router.callback_query(F.data == "start_sponsor_registration")
-async def start_sponsor_registration_handler(
-    callback: CallbackQuery, state: FSMContext
-):
-    lang = await get_user_language(callback.from_user.id)
-    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
-
-    await callback.message.delete()
-    await callback.message.answer(t["reg_title"], parse_mode="HTML")
-    await state.set_state(SponsorForm.waiting_for_name)
-    await callback.answer()
-
-
-@router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
-@router.callback_query(F.data == "menu_sponsors")
-async def sponsors_menu(event: Message | CallbackQuery):
-    user_id = event.from_user.id
-    lang = await get_user_language(user_id)
-  
-    if isinstance(event, Message) and event.text == "🤝 Демеушілер":
-        lang = "kk"
-
-    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=t["btn_brothers"], callback_data="list_brothers_0"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["btn_sisters"], callback_data="list_sisters_0"
-                )
-            ],
-        ]
-    )
-    if isinstance(event, Message):
-        await event.answer(t["choose_list"], reply_markup=keyboard)
-    else:
-        await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
-        await event.answer()
-
-
-@router.callback_query(F.data.startswith(("list_brothers_", "list_sisters_")))
-async def show_list_page(callback: CallbackQuery):
-    user_id = callback.from_user.id
-    lang = await get_user_language(user_id)
-    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
-
-    parts = callback.data.split("_")
-    list_type = parts[1]
-    page = int(parts[2])
-
-    gender_filter = (
-        "OR gender ILIKE '%муж%'"
-        if list_type == "brothers"
-        else "OR gender ILIKE '%жен%'"
-    )
-  
-    label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
-    db_keyword = "брат" if list_type == "brothers" else "сестр"
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute(
-        f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE gender"
-        f" ILIKE '%{db_keyword}%' {gender_filter};"
-    )
-    all_sponsors = cur.fetchall()
-    cur.close()
-    conn.close()
-
-    if not all_sponsors:
-        await callback.answer(
-            t["empty_list"].format(label=label), show_alert=True
-        )
-        return
-
-    PER_PAGE = 5
-    total_pages = (len(all_sponsors) + PER_PAGE - 1) // PER_PAGE
-    start_idx = page * PER_PAGE
-    end_idx = start_idx + PER_PAGE
-    current_sponsors = all_sponsors[start_idx:end_idx]
-
-    keyboard = []
-    for uid, name, age, city, sobriety in current_sponsors:
-        city_name = city if city else t["default_city"]
-        button_text = f"{name}, {age} | {city_name} | {sobriety}"
-        keyboard.append([
-            InlineKeyboardButton(
-                text=button_text,
-                callback_data=f"view_sp_{uid}_{list_type}_{page}",
-            )
-        ])
-
-    nav_buttons = []
-    if page > 0:
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text=t["btn_back"], callback_data=f"list_{list_type}_{page - 1}"
-            )
-        )
-    if end_idx < len(all_sponsors):
-        nav_buttons.append(
-            InlineKeyboardButton(
-                text=t["btn_forward"], callback_data=f"list_{list_type}_{page + 1}"
-            )
-        )
-
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-
-    keyboard.append(
-        [InlineKeyboardButton(text=t["btn_back"], callback_data="menu_sponsors")]
-    )
-
-    await callback.message.edit_text(
-        f"📖 ({label}) — {page + 1} / {total_pages}:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-    )
-
-
-@router.callback_query(F.data.startswith("view_sp_"))
-async def show_details(callback: CallbackQuery):
-    user_id_cb = callback.from_user.id
-    lang = await get_user_language(user_id_cb)
-    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
-
-    parts = callback.data.split("_")
-    user_id = parts[2]
-    list_type = parts[3]
-    page = parts[4]
-
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT name, gender, age, sobriety, city, username, phone, program_info"
-        " FROM sponsors WHERE user_id = %s;",
-        (user_id,),
-    )
-    sp = cur.fetchone()
-    cur.close()
-    conn.close()
-
-    if sp:
-        name, gender, age, sobriety, city, username, phone, program_info = sp
-        tg_contact = (
-            f"@{username}" if username and username not in ("-", "нет") else f"ID: {user_id}"
-        )
-
-        if lang == "kk":
-            text = (
-                f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Трэзвость мерзімі: {sobriety}\n📍"
-                f" Қала: {city}\n📖 Тәжірибе: {program_info}\n✈️ Telegram:"
-                f" {tg_contact}\n📞 Телефон: {phone}"
-            )
-        else:
-            text = (
-                f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
-                f" Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
-                f" {tg_contact}\n📞 Телефон: {phone}"
-            )
-
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    text=t["btn_back"], callback_data=f"list_{list_type}_{page}"
+                    text=t["btn_fill"], callback_data="start_sponsor_registration"
                 )
             ]
         ]
-
-        current_user_id = callback.from_user.id
-        if current_user_id == int(user_id) or current_user_id in ADMINS:
-            keyboard.insert(
-                0,
-                [
-                    InlineKeyboardButton(
-                        text=t["btn_edit"],
-                        callback_data=f"edit_menu_{user_id}_{list_type}_{page}",
-                    )
-                ],
-            )
-
-        await callback.message.edit_text(
-            text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
-        )
-    else:
-        await callback.answer(t["not_found"], show_alert=True)
-
-
-@router.callback_query(F.data.startswith("edit_menu_"))
-async def edit_menu(callback: CallbackQuery):
-    lang = await get_user_language(callback.from_user.id)
-    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
-
-    parts = callback.data.split("_")
-    user_id = parts[2]
-    list_type = parts[3]
-    page = parts[4]
-
-    if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-        await callback.answer(t["access_denied"], show_alert=True)
-        return
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=t["edit_age"],
-                    callback_data=f"edit_field_{user_id}_age_{list_type}_{page}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_sobriety"],
-                    callback_data=(
-                        f"edit_field_{user_id}_sobriety_{list_type}_{page}"
-                    ),
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_city"],
-                    callback_data=f"edit_field_{user_id}_city_{list_type}_{page}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_phone"],
-                    callback_data=f"edit_field_{user_id}_phone_{list_type}_{page}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_program"],
-                    callback_data=(
-                        f"edit_field_{user_id}_programinfo_{list_type}_{page}"
-                    ),
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["btn_back"],
-                    callback_data=f"view_sp_{user_id}_{list_type}_{page}",
-                )
-            ],
-        ]
     )
-    await callback.message.edit_text(t["edit_prompt"], reply_markup=keyboard)
-
-
-@router.callback_query(F.data.startswith("edit_field_"))
-async def start_editing_field(callback: CallbackQuery, state: FSMContext):
-    lang = await get_user_language(callback.from_user.id)
-    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
-
-    parts = callback.data.split("_")
-    user_id = parts[2]
-    field_name = parts[3]
-    list_type = parts[4]
-    page = parts[5]
-
-    if field_name == "programinfo":
-        field_name = "program_info"
-
-    if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-        await callback.answer(t["access_denied_field"], show_alert=True)
-        return
-
-    await state.update_data(
-        target_user_id=user_id,
-        field_name=field_name,
-        list_type=list_type,
-        page=page,
+    await message.answer(
+        t["menu_title"], reply_markup=keyboard, parse_mode="HTML"
     )
-    await state.set_state(EditSponsorState.waiting_for_new_value)
+  except Exception as e:
+    print(f"Ошибка в start_form_text: {e}")
+    traceback.print_exc()
 
-    field_desc = t["fields"].get(field_name, "значение")
-    prompt_prefix = "✍️ Жазыңыз: " if lang == "kk" else "✍️ Напишите "
-    await callback.message.answer(f"{prompt_prefix}{field_desc}:")
+
+@router.callback_query(F.data == "start_sponsor_registration")
+async def start_form_callback(callback: CallbackQuery, state: FSMContext):
+  try:
+    lang = await get_user_language(callback.from_user.id)
+    
+    if callback.message.reply_markup:
+        for row in callback.message.reply_markup.inline_keyboard:
+            for btn in row:
+                if btn.callback_data == "start_sponsor_registration" and "толтыру" in btn.text.lower():
+                    lang = "kk"
+
+    await state.update_data(lang=lang)
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+    await callback.message.answer(
+        t["ask_name"], reply_markup=ReplyKeyboardRemove()
+    )
+    await state.set_state(SponsorForm.name)
     await callback.answer()
+  except Exception as e:
+    print(f"CRITICAL ERROR в start_form_callback: {e}")
+    traceback.print_exc()
+    try:
+      await callback.answer("Ошибка при запуске анкеты.", show_alert=True)
+    except:
+      pass
 
 
-@router.message(EditSponsorState.waiting_for_new_value)
-async def save_edited_field(message: Message, state: FSMContext):
-    lang = await get_user_language(message.from_user.id)
-    t = SPONSOR_TEXTS.get(lang, SPONSOR_TEXTS["ru"])
+@router.message(SponsorForm.name)
+async def process_name(message: Message, state: FSMContext):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
-    new_value = message.text.strip()
-    data = await state.get_data()
-    target_user_id = data.get("target_user_id")
-    field_name = data.get("field_name")
+  await state.update_data(name=message.text)
+  await message.answer(t["ask_gender"])
+  await state.set_state(SponsorForm.gender)
 
-    allowed_fields = ["age", "sobriety", "city", "phone", "program_info"]
-    if field_name not in allowed_fields:
-        await message.answer(t["field_error"])
-        await state.clear()
-        return
 
-    if field_name == "age":
-        if not new_value.isdigit() or not (18 <= int(new_value) <= 100):
-            await message.answer(t["age_error"])
-            return
+@router.message(SponsorForm.gender)
+async def process_gender(message: Message, state: FSMContext):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await state.update_data(gender=message.text)
+  await message.answer(t["ask_age"])
+  await state.set_state(SponsorForm.age)
+
+
+@router.message(SponsorForm.age)
+async def process_age(message: Message, state: FSMContext):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await state.update_data(age=message.text)
+  await message.answer(t["ask_sobriety"])
+  await state.set_state(SponsorForm.sobriety)
+
+
+@router.message(SponsorForm.sobriety)
+async def process_sobriety(message: Message, state: FSMContext):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await state.update_data(sobriety=message.text)
+  await message.answer(t["ask_city"])
+  await state.set_state(SponsorForm.city)
+
+
+@router.message(SponsorForm.city)
+async def process_city(message: Message, state: FSMContext):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await state.update_data(city=message.text)
+  await message.answer(t["ask_program"])
+  await state.set_state(SponsorForm.program_info)
+
+
+@router.message(SponsorForm.program_info)
+async def process_program_info(message: Message, state: FSMContext):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await state.update_data(program_info=message.text)
+  await message.answer(t["ask_phone"])
+  await state.set_state(SponsorForm.phone)
+
+
+@router.message(SponsorForm.phone)
+async def process_phone(message: Message, state: FSMContext, bot: Bot):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await state.update_data(phone=message.text)
+  data = await state.get_data()
+  tg_id = message.from_user.id
+
+  sponsor_data = {
+      "name": data.get("name"),
+      "gender": data.get("gender"),
+      "age": data.get("age"),
+      "sobriety": data.get("sobriety"),
+      "city": data.get("city"),
+      "program_info": data.get("program_info"),
+      "username": message.from_user.username or "нет",
+      "phone": data.get("phone"),
+  }
+
+  try:
+    await save_sponsor_draft(tg_id, sponsor_data)
+  except Exception as e:
+    print(f"Ошибка сохранения черновика в БД: {e}")
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["admin_approve"],
+                  callback_data=f"approve_sp_{tg_id}",
+              ),
+              InlineKeyboardButton(
+                  text=t["admin_decline"],
+                  callback_data=f"decline_sp_{tg_id}",
+              ),
+          ]
+      ]
+  )
+
+  admin_text = (
+      f"🔔 {t['admin_title']}\n"
+      "━━━━━━━━━━━━━━━━━━\n"
+      f"👤 Имя: {html.escape(str(sponsor_data['name']))} ({html.escape(str(sponsor_data['gender']))})\n"
+      f"📅 Возраст: {html.escape(str(sponsor_data['age']))}\n"
+      f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
+      f"📍 Город: {html.escape(str(sponsor_data['city']))}\n\n"
+      f"📖 Опыт/Программа: {html.escape(str(sponsor_data['program_info']))}\n"
+      f"✈️ Telegram: @{html.escape(str(sponsor_data['username']))}\n"
+      f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
+      "━━━━━━━━━━━━━━━━━━"
+  )
+
+  for admin_id in ADMINS:
+    try:
+      await bot.send_message(
+          chat_id=admin_id,
+          text=admin_text,
+          reply_markup=keyboard,
+          parse_mode="HTML",
+      )
+    except Exception as e:
+      print(f"Не удалось отправить админу {admin_id}: {e}")
+
+  await message.answer(
+      t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
+  )
+  await state.clear()
+
+
+@router.callback_query(F.data.startswith("approve_sp_"))
+async def approve_sponsor(callback: CallbackQuery, bot: Bot):
+  target_user_id = int(callback.data.split("_")[2])
+  lang = await get_user_language(target_user_id)
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT name, gender, age, sobriety, city, username, phone,"
+        " program_info FROM sponsor_drafts WHERE user_id = %s;",
+        (target_user_id,),
+    )
+    draft = cur.fetchone()
+
+    if draft:
+      cur.execute(
+          """
+                INSERT INTO sponsors (user_id, name, gender, age, sobriety, city, username, phone, program_info)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    name = EXCLUDED.name, gender = EXCLUDED.gender, age = EXCLUDED.age,
+                    sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, username = EXCLUDED.username,
+                    phone = EXCLUDED.phone, program_info = EXCLUDED.program_info;
+            """,
+          (target_user_id, *draft),
+      )
+
+      cur.execute(
+          "DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,)
+      )
+      conn.commit()
+
+    cur.close()
+    conn.close()
+
+    await callback.message.edit_text(
+        f"{callback.message.text}\n\n✅ ОДОБРЕНО АДМИНИСТРАТОРОМ", reply_markup=None
+    )
+    await callback.answer(t["approved_alert"])
 
     try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        query = f"UPDATE sponsors SET {field_name} = %s WHERE user_id = %s;"
-        cur.execute(query, (new_value, target_user_id))
-        conn.commit()
-        cur.close()
-        conn.close()
+      await bot.send_message(target_user_id, t["user_approved"])
+    except:
+      pass
 
-        await message.answer(t["success_update"])
-        await state.clear()
-    except Exception as e:
-        print(f"Ошибка при обновлении: {e}")
-        await message.answer(t["error_update"])
-        await state.clear()
+  except Exception as e:
+    print(f"Ошибка в approve: {e}")
+    await callback.answer("Ошибка БД", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("decline_sp_"))
+async def decline_sponsor(callback: CallbackQuery, bot: Bot):
+  target_user_id = int(callback.data.split("_")[2])
+  lang = await get_user_language(target_user_id)
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    await callback.message.edit_text(
+        f"{callback.message.text}\n\n❌ ОТКЛОНЕНО АДМИНИСТРАТОРОМ",
+        reply_markup=None,
+    )
+    await callback.answer(t["declined_alert"])
+
+    try:
+      await bot.send_message(target_user_id, t["user_declined"])
+    except:
+      pass
+  except Exception as e:
+    print(f"Ошибка в decline: {e}")
+    await callback.answer("Ошибка БД", show_alert=True)
