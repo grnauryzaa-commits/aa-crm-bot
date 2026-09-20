@@ -191,7 +191,7 @@ def format_reflection_text(text, today):
   )
 
 
-@router.message(Command("start"))
+@router.message(F.chat.type == "private", Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
   await state.clear()
   lang = await get_user_language(message.from_user.id)
@@ -249,6 +249,9 @@ async def language_menu_handler(message: types.Message):
 
 @router.callback_query(F.data.startswith("set_lang_"))
 async def set_language_callback(callback: types.CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   lang = callback.data.split("_")[2]
   await set_user_language(callback.from_user.id, lang)
   t = TEXTS[lang]
@@ -270,12 +273,10 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
   await state.clear()
   user_id = message.from_user.id
 
-  if message.text == "➕ Демеуші болу" or "Демеуші болу" in message.text:
-    lang = "kk"
-  else:
-    lang = await get_user_language(user_id)
-    if not lang:
-      lang = "ru"
+  # Строго опираемся на реальный язык пользователя из базы, чтобы не было путаницы
+  lang = await get_user_language(user_id)
+  if not lang:
+    lang = "ru"
 
   titles = {
       "ru": (
@@ -379,6 +380,9 @@ async def step_eleven_menu(message: types.Message):
 
 @router.callback_query(F.data == "get_morning_prayer")
 async def send_morning_callback(callback: types.CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   lang = await get_user_language(callback.from_user.id)
   if not lang:
     lang = "ru"
@@ -389,6 +393,9 @@ async def send_morning_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "get_evening_prayer")
 async def send_evening_callback(callback: types.CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   lang = await get_user_language(callback.from_user.id)
   if not lang:
     lang = "ru"
@@ -400,9 +407,8 @@ async def send_evening_callback(callback: types.CallbackQuery):
 @router.message(
     F.chat.type == "private", F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"})
 )
-@router.callback_query(F.data == "menu_sponsors")
-async def sponsors_menu_handler(event: types.Message | types.CallbackQuery):
-  lang = await get_user_language(event.from_user.id)
+async def sponsors_menu_handler_msg(message: types.Message):
+  lang = await get_user_language(message.from_user.id)
   if not lang:
     lang = "ru"
   t = TEXTS[lang]
@@ -420,11 +426,34 @@ async def sponsors_menu_handler(event: types.Message | types.CallbackQuery):
           ],
       ]
   )
-  if isinstance(event, types.Message):
-    await event.answer(t["sponsors_title"], reply_markup=keyboard)
-  else:
-    await event.message.edit_text(t["sponsors_title"], reply_markup=keyboard)
-    await event.answer()
+  await message.answer(t["sponsors_title"], reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "menu_sponsors")
+async def sponsors_menu_handler_cb(callback: types.CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
+  lang = await get_user_language(callback.from_user.id)
+  if not lang:
+    lang = "ru"
+  t = TEXTS[lang]
+  keyboard = types.InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              types.InlineKeyboardButton(
+                  text=t["sponsor_brothers"], callback_data="list_brothers_0"
+              )
+          ],
+          [
+              types.InlineKeyboardButton(
+                  text=t["sponsor_sisters"], callback_data="list_sisters_0"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(t["sponsors_title"], reply_markup=keyboard)
+  await callback.answer()
 
 
 @router.message(F.chat.type == "private", F.text.in_({"❓ Помощь", "❓ Көмек"}))
@@ -447,6 +476,9 @@ async def help_section_handler(message: types.Message):
 
 @router.callback_query(F.data.startswith("back_to_menu"))
 async def back_to_menu_callback(callback: types.CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   parts = callback.data.split("_")
   lang = parts[3] if len(parts) > 3 else None
 
@@ -470,6 +502,9 @@ async def back_to_menu_callback(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "call_servant")
 async def call_servant_callback(callback: types.CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   user = callback.from_user
   lang = await get_user_language(user.id)
   if not lang:
