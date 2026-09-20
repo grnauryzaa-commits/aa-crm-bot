@@ -2,6 +2,7 @@ import psycopg2
 import logging
 import asyncio
 from config import DATABASE_URL as DB_URL
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 logging.basicConfig(level=logging.INFO)
 
@@ -120,6 +121,22 @@ def _set_user_language_sync(user_id: int, lang: str):
 
 async def set_user_language(user_id: int, lang: str):
     await asyncio.to_thread(_set_user_language_sync, user_id, lang)
+
+# Генератор главного меню под конкретный язык (решает проблему сброса кнопок)
+def get_main_menu_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
+    if lang == "kk":
+        keyboard = [
+            [KeyboardButton(text="➕ Демеуші болу"), KeyboardButton(text="🤝 Демеушілер")],
+            [KeyboardButton(text="🗓 Кесте"), KeyboardButton(text="📖 Күнделікті ой-толғаулар")],
+            [KeyboardButton(text="? Көмек"), KeyboardButton(text="🌐 Тіл: Қазақша")]
+        ]
+    else:
+        keyboard = [
+            [KeyboardButton(text="➕ Стать спонсором"), KeyboardButton(text="🤝 Спонсоры")],
+            [KeyboardButton(text="🗓 Расписание"), KeyboardButton(text="📖 Ежедневные размышления")],
+            [KeyboardButton(text="? Помощь"), KeyboardButton(text="🌐 Язык: Русский")]
+        ]
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 # Остальные функции базы данных
 def _get_sponsor_sync(user_id):
