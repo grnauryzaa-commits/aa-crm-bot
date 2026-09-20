@@ -147,7 +147,8 @@ def format_reflection_text(text, today, lang="ru"):
     return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
 
 
-async def send_daily_reflection_to_channel(bot):
+async def send_daily_reflection_to_channel(bot, lang="ru"):
+  """Отправка размышлений в канал с возможностью выбора языка (ru / kk)"""
   today = datetime.now()
   try:
     conn = psycopg2.connect(DB_URL)
@@ -160,28 +161,25 @@ async def send_daily_reflection_to_channel(bot):
     cur.close()
     conn.close()
     if row:
-      await bot.send_message(
-          CHANNEL_ID,
-          format_reflection_text(row[0], today, lang="ru"),
-          parse_mode="HTML",
-      )
+      text_formatted = format_reflection_text(row[0], today, lang=lang)
+      await bot.send_message(CHANNEL_ID, text_formatted, parse_mode="HTML")
   except Exception as e:
-    logging.error(f"Ошибка рассылки размышлений: {e}")
+    logging.error(f"Ошибка рассылки размышлений ({lang}): {e}")
 
 
-async def send_morning_prayer_to_channel(bot):
+async def send_morning_prayer_to_channel(bot, lang="ru"):
+  """Отправка утренней молитвы на нужном языке"""
+  text = MORNING_PRAYER_TEXT_KK if lang == "kk" else MORNING_PRAYER_TEXT_RU
   try:
-    await bot.send_message(
-        CHANNEL_ID, MORNING_PRAYER_TEXT_RU, parse_mode="HTML"
-    )
+    await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
   except Exception as e:
-    logging.error(f"Ошибка отправки молитвы: {e}")
+    logging.error(f"Ошибка отправки утренней молитвы ({lang}): {e}")
 
 
-async def send_evening_prayer_to_channel(bot):
+async def send_evening_prayer_to_channel(bot, lang="ru"):
+  """Отправка вечерней молитвы на нужном языке"""
+  text = EVENING_PRAYER_TEXT_KK if lang == "kk" else EVENING_PRAYER_TEXT_RU
   try:
-    await bot.send_message(
-        CHANNEL_ID, EVENING_PRAYER_TEXT_RU, parse_mode="HTML"
-    )
+    await bot.send_message(CHANNEL_ID, text, parse_mode="HTML")
   except Exception as e:
-    logging.error(f"Ошибка отправки вечерней молитвы: {e}")
+    logging.error(f"Ошибка отправки вечерней молитвы ({lang}): {e}")
