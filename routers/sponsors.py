@@ -135,19 +135,18 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
 
 # --- ПЕРЕХВАТ КНОПКИ СТАТЬ СПОНСОРОМ ---
 @router.message(
-    F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
-    | F.text.contains("Демеуші")
-    | F.text.contains("Спонсор")
+    F.chat.type == "private",
+    (
+        F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
+        | F.text.contains("Демеуші")
+        | F.text.contains("Спонсор")
+    ),
 )
 async def start_form_text(message: Message, state: FSMContext):
   try:
-    text_lower = message.text.lower() if message.text else ""
-    if "демеуші" in text_lower:
-      lang = "kk"
-    else:
-      lang = await get_user_language(message.from_user.id)
-      if not lang:
-        lang = "ru"
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+      lang = "ru"
 
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -171,20 +170,51 @@ async def start_form_text(message: Message, state: FSMContext):
 
 # --- МЕНЮ СПОНСОРОВ (СПИСКИ БРАТЬЕВ И СЕСТЕР) ---
 @router.message(
-    F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"})
-    | F.text.contains("Демеушілер")
-    | F.text.contains("Спонсоры")
+    F.chat.type == "private",
+    (
+        F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"})
+        | F.text.contains("Демеушілер")
+        | F.text.contains("Спонсоры")
+    ),
 )
+async def sponsors_menu_msg(message: Message):
+  user_id = message.from_user.id
+  lang = await get_user_language(user_id)
+  if not lang:
+    lang = "ru"
+
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["btn_brothers"],
+                  callback_data=f"list_brothers_0_{lang}",
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["btn_sisters"], callback_data=f"list_sisters_0_{lang}"
+              )
+          ],
+      ]
+  )
+  await message.answer(t["choose_list"], reply_markup=keyboard)
+
+
 @router.callback_query(
     (F.data == "menu_sponsors") | (F.data.startswith("menu_sponsors_"))
 )
-async def sponsors_menu(event: Message | CallbackQuery):
-  user_id = event.from_user.id
-  if isinstance(event, Message) and event.text and "Демеушілер" in event.text:
-    lang = "kk"
-  elif isinstance(event, CallbackQuery) and event.data.endswith("_kk"):
-    lang = "kk"
-  else:
+async def sponsors_menu_cb(callback: CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
+  user_id = callback.from_user.id
+
+  parts = callback.data.split("_")
+  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
+  if not lang:
     lang = await get_user_language(user_id)
     if not lang:
       lang = "ru"
@@ -206,18 +236,18 @@ async def sponsors_menu(event: Message | CallbackQuery):
           ],
       ]
   )
-  if isinstance(event, Message):
-    await event.answer(t["choose_list"], reply_markup=keyboard)
-  else:
-    try:
-      await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
-    except Exception:
-      await event.message.answer(t["choose_list"], reply_markup=keyboard)
-    await event.answer()
+  try:
+    await callback.message.edit_text(t["choose_list"], reply_markup=keyboard)
+  except Exception:
+    await callback.message.answer(t["choose_list"], reply_markup=keyboard)
+  await callback.answer()
 
 
 @router.callback_query(F.data.startswith("list_"))
 async def show_list_page(callback: CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   parts = callback.data.split("_")
   if len(parts) < 3:
     await callback.answer("Ошибка навигации", show_alert=True)
@@ -225,9 +255,12 @@ async def show_list_page(callback: CallbackQuery):
 
   list_type = parts[1]
   page = int(parts[2])
-  lang = (
-      parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "kk"
-  )
+
+  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+      lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -310,11 +343,18 @@ async def show_list_page(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   parts = callback.data.split("_")
   user_id = parts[2]
   list_type = parts[3]
   page = parts[4]
-  lang = parts[5] if len(parts) > 5 else "ru"
+  lang = parts[5] if len(parts) > 5 and parts[5] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+      lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -343,7 +383,7 @@ async def show_details(callback: CallbackQuery):
 
     if lang == "kk":
       text = (
-          f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Трэзвость мерзімі: {sobriety}\n📍"
+          f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Тазалық мерзімі: {sobriety}\n📍"
           f" Қала: {city}\n📖 Тәжірибе: {program_info}\n✈️ Telegram:"
           f" {tg_contact}\n📞 Телефон: {phone}"
       )
@@ -373,9 +413,12 @@ async def show_details(callback: CallbackQuery):
 # --- ЗАПОЛНЕНИЕ АНКЕТЫ С СОХРАНЕНИЕМ ЯЗЫКА ---
 @router.callback_query(F.data.startswith("start_sponsor_registration"))
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
   try:
     parts = callback.data.split("_")
-    lang = parts[3] if len(parts) > 3 else None
+    lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
 
     if not lang:
       lang = await get_user_language(callback.from_user.id)
@@ -399,7 +442,7 @@ async def start_form_callback(callback: CallbackQuery, state: FSMContext):
       pass
 
 
-@router.message(SponsorForm.name)
+@router.message(F.chat.type == "private", SponsorForm.name)
 async def process_name(message: Message, state: FSMContext):
   data = await state.get_data()
   lang = data.get("lang", "ru")
@@ -410,7 +453,7 @@ async def process_name(message: Message, state: FSMContext):
   await state.set_state(SponsorForm.gender)
 
 
-@router.message(SponsorForm.gender)
+@router.message(F.chat.type == "private", SponsorForm.gender)
 async def process_gender(message: Message, state: FSMContext):
   data = await state.get_data()
   lang = data.get("lang", "ru")
@@ -421,7 +464,7 @@ async def process_gender(message: Message, state: FSMContext):
   await state.set_state(SponsorForm.age)
 
 
-@router.message(SponsorForm.age)
+@router.message(F.chat.type == "private", SponsorForm.age)
 async def process_age(message: Message, state: FSMContext):
   data = await state.get_data()
   lang = data.get("lang", "ru")
@@ -432,7 +475,7 @@ async def process_age(message: Message, state: FSMContext):
   await state.set_state(SponsorForm.sobriety)
 
 
-@router.message(SponsorForm.sobriety)
+@router.message(F.chat.type == "private", SponsorForm.sobriety)
 async def process_sobriety(message: Message, state: FSMContext):
   data = await state.get_data()
   lang = data.get("lang", "ru")
@@ -443,7 +486,7 @@ async def process_sobriety(message: Message, state: FSMContext):
   await state.set_state(SponsorForm.city)
 
 
-@router.message(SponsorForm.city)
+@router.message(F.chat.type == "private", SponsorForm.city)
 async def process_city(message: Message, state: FSMContext):
   data = await state.get_data()
   lang = data.get("lang", "ru")
@@ -454,7 +497,7 @@ async def process_city(message: Message, state: FSMContext):
   await state.set_state(SponsorForm.program_info)
 
 
-@router.message(SponsorForm.program_info)
+@router.message(F.chat.type == "private", SponsorForm.program_info)
 async def process_program_info(message: Message, state: FSMContext):
   data = await state.get_data()
   lang = data.get("lang", "ru")
@@ -465,7 +508,7 @@ async def process_program_info(message: Message, state: FSMContext):
   await state.set_state(SponsorForm.phone)
 
 
-@router.message(SponsorForm.phone)
+@router.message(F.chat.type == "private", SponsorForm.phone)
 async def process_phone(message: Message, state: FSMContext, bot: Bot):
   data = await state.get_data()
   lang = data.get("lang", "ru")
@@ -589,35 +632,4 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
 
   except Exception as e:
     print(f"Ошибка в approve: {e}")
-    await callback.answer("Ошибка БД", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("decline_sp_"))
-async def decline_sponsor(callback: CallbackQuery, bot: Bot):
-  target_user_id = int(callback.data.split("_")[2])
-  lang = await get_user_language(target_user_id)
-  if not lang:
-    lang = "ru"
-  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    await callback.message.edit_text(
-        f"{callback.message.text}\n\n❌ ОТКЛОНЕНО АДМИНИСТРАТОРОМ",
-        reply_markup=None,
-    )
-    await callback.answer(t["declined_alert"])
-
-    try:
-      await bot.send_message(target_user_id, t["user_declined"])
-    except:
-      pass
-  except Exception as e:
-    print(f"Ошибка в decline: {e}")
-    await callback.answer("Ошибка БД", show_alert=True)
+    await callback.answer
