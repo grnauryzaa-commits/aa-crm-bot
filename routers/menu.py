@@ -131,6 +131,7 @@ async def set_language_callback(callback: types.CallbackQuery):
     lang = callback.data.split("_")[2]
     await set_user_language(callback.from_user.id, lang)
     t = TEXTS[lang]
+    # Отправляем сообщение об изменении языка и сразу обновляем клавиатуру на выбранный язык
     await callback.message.answer(t["lang_changed"], reply_markup=get_main_menu_keyboard(lang))
     await callback.answer()
 
@@ -345,9 +346,12 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
     ai_response = await ask_ai_for_beginner(message.from_user.id, message.text)
     
+    lang = await get_user_language(message.from_user.id)
+    help_text_btn = "👤 Позвать живого служащего" if lang == 'ru' else "👤 Тірі қызметкерді шақыру"
+    
     servant_keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="👤 Позвать живого служащего", callback_data="call_servant")]
+            [InlineKeyboardButton(text=help_text_btn, callback_data="call_servant")]
         ]
     )
     await message.answer(ai_response, parse_mode="Markdown", reply_markup=servant_keyboard)
