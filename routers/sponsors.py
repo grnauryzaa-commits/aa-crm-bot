@@ -233,6 +233,7 @@ async def show_list_page(callback: CallbackQuery):
       else "OR gender ILIKE '%жен%'"
   )
 
+  # Правильный выбор локализованной метки для заголовка
   label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
   db_keyword = "брат" if list_type == "brothers" else "сестр"
 
@@ -292,7 +293,6 @@ async def show_list_page(callback: CallbackQuery):
   if nav_buttons:
     keyboard.append(nav_buttons)
 
-  # ИСПРАВЛЕНИЕ: Кнопка возврата теперь учитывает текущий язык (lang)
   keyboard.append([
       InlineKeyboardButton(
           text=t["btn_back"], callback_data=f"menu_sponsors_{lang}"
