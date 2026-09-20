@@ -205,9 +205,10 @@ async def cmd_start(message: types.Message, state: FSMContext):
 
 
 @router.message(
+    F.chat.type == "private",
     F.text.in_(
         {"🏠 Главное меню", "Главное меню", "🏠 Басты мәзір", "Басты мәзір"}
-    )
+    ),
 )
 async def cmd_main_menu(message: types.Message, state: FSMContext):
   await state.clear()
@@ -221,7 +222,10 @@ async def cmd_main_menu(message: types.Message, state: FSMContext):
   )
 
 
-@router.message(F.text.in_({"🌐 Язык: Русский", "🌐 Тіл: Қазақша"}))
+@router.message(
+    F.chat.type == "private",
+    F.text.in_({"🌐 Язык: Русский", "🌐 Тіл: Қазақша"}),
+)
 async def language_menu_handler(message: types.Message):
   lang = await get_user_language(message.from_user.id)
   if not lang:
@@ -255,9 +259,12 @@ async def set_language_callback(callback: types.CallbackQuery):
 
 
 @router.message(
-    F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
-    | F.text.contains("Демеуші болу")
-    | F.text.contains("Стать спонсором")
+    F.chat.type == "private",
+    (
+        F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
+        | F.text.contains("Демеуші болу")
+        | F.text.contains("Стать спонсором")
+    ),
 )
 async def become_sponsors_menu_direct(message: types.Message, state: FSMContext):
   await state.clear()
@@ -304,7 +311,10 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
   await message.answer(titles[lang], reply_markup=keyboard, parse_mode="HTML")
 
 
-@router.message(F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}))
+@router.message(
+    F.chat.type == "private",
+    F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}),
+)
 async def show_daily_reflection(message: types.Message):
   today = datetime.now()
   lang = await get_user_language(message.from_user.id)
@@ -342,7 +352,9 @@ async def show_daily_reflection(message: types.Message):
     await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
 
 
-@router.message(F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"}))
+@router.message(
+    F.chat.type == "private", F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"})
+)
 async def step_eleven_menu(message: types.Message):
   lang = await get_user_language(message.from_user.id)
   if not lang:
@@ -385,7 +397,9 @@ async def send_evening_callback(callback: types.CallbackQuery):
   await callback.answer()
 
 
-@router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
+@router.message(
+    F.chat.type == "private", F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"})
+)
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu_handler(event: types.Message | types.CallbackQuery):
   lang = await get_user_language(event.from_user.id)
@@ -450,7 +464,9 @@ def get_schedule_menu_kb():
   )
 
 
-@router.message(F.text.in_({"📅 Расписание", "📅 Кесте"}))
+@router.message(
+    F.chat.type == "private", F.text.in_({"📅 Расписание", "📅 Кесте"})
+)
 async def show_schedule_menu(message: types.Message):
   await message.answer(
       "📅 <b>Расписание собраний АА</b>\nВыберите локацию:",
@@ -599,7 +615,7 @@ async def callback_schedule(callback: types.CallbackQuery):
   await callback.answer()
 
 
-@router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
+@router.message(F.chat.type == "private", F.text.in_({"❓ Помощь", "❓ Көмек"}))
 async def help_section_handler(message: types.Message):
   lang = await get_user_language(message.from_user.id)
   if not lang:
