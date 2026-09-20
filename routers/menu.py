@@ -9,7 +9,7 @@ import logging
 from routers.reflections import MORNING_PRAYER_TEXT, EVENING_PRAYER_TEXT
 from .ai_helper import ask_ai_for_beginner
 from config import DATABASE_URL, SERVANT_CHAT_IDS
-from database import get_user_language, set_user_language
+from database import get_user_language, set_user_language, get_main_menu_keyboard
 
 router = Router()
 
@@ -23,13 +23,6 @@ TEXTS = {
         "menu": "🏠 <b>Главное меню</b>\n\nВыберите нужный раздел внизу 👇",
         "choose_lang": "🌐 Выберите язык интерфейса и общения с ботом:",
         "lang_changed": "✅ Язык успешно изменен на русский!",
-        "btn_reflection": "📖 Ежедневные размышления",
-        "btn_step11": "🙏 11 Шаг",
-        "btn_sponsor": "➕ Стать спонсором",
-        "btn_sponsors": "🤝 Спонсоры",
-        "btn_schedule": "📅 Расписание",
-        "btn_help": "❓ Помощь",
-        "btn_lang": "🌐 Язык: Русский",
         "sponsors_title": "👥 Выберите список:",
         "sponsor_brothers": "👦 Братья",
         "sponsor_sisters": "👧 Сестры",
@@ -50,13 +43,6 @@ TEXTS = {
         "menu": "🏠 <b>Басты мәзір</b>\n\nТөменден қажетті бөлімді таңдаңыз 👇",
         "choose_lang": "🌐 Тілді таңдаңыз / Выберите язык:",
         "lang_changed": "✅ Тіл қазақ тіліне өзгертілді!",
-        "btn_reflection": "📖 Күнделікті ой-толғаулар",
-        "btn_step11": "🙏 11 Қадам",
-        "btn_sponsor": "➕ Демеуші болу",
-        "btn_sponsors": "🤝 Демеушілер",
-        "btn_schedule": "📅 Кесте",
-        "btn_help": "❓ Көмек",
-        "btn_lang": "🌐 Тіл: Қазақша",
         "sponsors_title": "👥 Тізімді таңдаңыз:",
         "sponsor_brothers": "👦 Бауырлар",
         "sponsor_sisters": "👧 Әпкелер",
@@ -69,19 +55,6 @@ TEXTS = {
         "step11_evening": "🌙 Кешкі дұға"
     }
 }
-
-def get_main_menu_keyboard(lang='ru'):
-    t = TEXTS[lang]
-    return types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text=t["btn_reflection"])],
-            [types.KeyboardButton(text=t["btn_step11"]), types.KeyboardButton(text=t["btn_sponsor"])],
-            [types.KeyboardButton(text=t["btn_sponsors"]), types.KeyboardButton(text=t["btn_schedule"])],
-            [types.KeyboardButton(text=t["btn_help"]), types.KeyboardButton(text=t["btn_lang"])]
-        ],
-        resize_keyboard=True,
-        input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇"
-    )
 
 def format_reflection_text(text, today):
     lines = [l.strip() for l in text.split('\n') if l.strip()]
@@ -131,21 +104,14 @@ async def set_language_callback(callback: types.CallbackQuery):
     lang = callback.data.split("_")[2]
     await set_user_language(callback.from_user.id, lang)
     t = TEXTS[lang]
-    # Отправляем сообщение об изменении языка и сразу обновляем клавиатуру на выбранный язык
     await callback.message.answer(t["lang_changed"], reply_markup=get_main_menu_keyboard(lang))
     await callback.answer()
 
-@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}) | F.text.contains("Демеуші болу") | F.text.contains("Стать спонсором"))
+@router.message(F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"}))
 async def become_sponsors_menu_direct(message: Message, state: FSMContext):
     await state.clear()
-    user_id = message.from_user.id
+    lang = await get_user_language(message.from_user.id)
     
-    if "Демеуші" in message.text:
-        await set_user_language(user_id, "kk")
-        lang = "kk"
-    else:
-        lang = await get_user_language(user_id)
-        
     titles = {
         "ru": "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который прошел Шаги и готов делиться опытом с другими.",
         "kk": "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және басқалармен тәжірибе бөлісуге дайын адам."
@@ -192,24 +158,8 @@ async def show_daily_reflection(message: types.Message):
 @router.message(F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"}))
 async def step_eleven_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
-    t = TEXTS[lang]
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=t["step11_morning"], callback_data="get_morning_prayer")],
-            [InlineKeyboardButton(text=t["step11_evening"], callback_data="get_evening_prayer")]
-        ]
-    )
-    await message.answer(t["step11_title"], reply_markup=keyboard, parse_mode="HTML")
-
-@router.callback_query(F.data == "get_morning_prayer")
-async def send_morning_callback(callback: types.CallbackQuery):
-    await callback.message.answer(MORNING_PRAYER_TEXT, parse_mode="HTML")
-    await callback.answer()
-
-@router.callback_query(F.data == "get_evening_prayer")
-async def send_evening_callback(callback: types.CallbackQuery):
-    await callback.message.answer(EVENING_PRAYER_TEXT, parse_mode="HTML")
-    await callback.answer()
+    # Заглушка или вызов шага 11 под язык
+    await message.answer("11 Шаг", reply_markup=get_main_menu_keyboard(lang))
 
 @router.message(F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"}))
 @router.callback_query(F.data == "menu_sponsors")
@@ -226,8 +176,10 @@ async def sponsors_menu_handler(event: Message | CallbackQuery):
         await event.message.edit_text(t["sponsors_title"], reply_markup=keyboard)
         await event.answer()
 
-def get_schedule_menu_kb():
-    return InlineKeyboardMarkup(inline_keyboard=[
+@router.message(F.text.in_({"📅 Расписание", "🗓 Расписание", "🗓 Кесте", "📅 Кесте"}))
+async def show_schedule_menu(message: types.Message):
+    lang = await get_user_language(message.from_user.id)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🌐 Онлайн группы", callback_data="s_online")],
         [InlineKeyboardButton(text="📍 Алматы: Жубанова 3а", callback_data="s_zhub")],
         [InlineKeyboardButton(text="📍 Алматы: Зенкова 24", callback_data="s_zenk")],
@@ -235,53 +187,9 @@ def get_schedule_menu_kb():
         [InlineKeyboardButton(text="📍 Каскелен: Нур-Жанат", callback_data="s_kaskelen")],
         [InlineKeyboardButton(text="📍 Другие локации", callback_data="s_other")]
     ])
+    await message.answer("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=kb, parse_mode="HTML")
 
-@router.message(F.text.in_({"📅 Расписание", "📅 Кесте"}))
-async def show_schedule_menu(message: types.Message):
-    await message.answer("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_schedule_menu_kb(), parse_mode="HTML")
-
-@router.callback_query(F.data.startswith("s_"))
-async def callback_schedule(callback: types.CallbackQuery):
-    data = callback.data
-    kb_back = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
-    help_text = "\n\nЕсли у вас есть вопросы, нужна поддержка — мы готовы помочь.\n📞 Горячая линия: +7 708 317 17 69"
-
-    if data == "s_back":
-        await callback.message.edit_text("📅 <b>Расписание собраний АА</b>\nВыберите локацию:", reply_markup=get_schedule_menu_kb(), parse_mode="HTML")
-    elif data == "s_online":
-        text = ("🌐 <b>ОНЛАЙН</b>\n\n• <b>Пробуждение</b>: Вт, Чт, Сб 21:00\n<a href='https://us06web.zoom.us/j/82036099070'>Zoom</a> | Пароль: +77754565358\n\n"
-                "• <b>Бірлік (каз)</b>: Чт 21:00\n<a href='https://us06web.zoom.us/j/7473499478'>Zoom</a> | Пароль: +77074337408\n\n"
-                "• <b>Шаг за шагом</b>: Вт 19:00\n<a href='https://t.me/+JqgMpZCz_fY1OTVi'>Telegram</a>" + help_text)
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_back), parse_mode="HTML", disable_web_page_preview=True)
-    elif data == "s_zhub":
-        text = ("🏢 <b>Жубанова 3а</b> (между Алтынсарина и Отеген Батыра)\n301 кабинет, 3 этаж\n\n"
-                "• <b>Виктория</b>: Вт, Чт 19:30, Сб 19:00\n• <b>Шапагат (каз)</b>: Пн, Ср 19:00, Сб 17:00\n"
-                "• <b>Чайхана (Новички)</b>: Вс 11:00\n• <b>Женский клуб</b>: Вс 13:00" + help_text)
-        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047375041535/76.857015,43.236908")],
-              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-    elif data == "s_zenk":
-        text = ("🏢 <b>Зенкова 24 (Дом Офицеров)</b>\n\n• <b>8 марта</b>: Ежедневно 19:00, Вт/Чт 12:00\n• <b>АлмА (Женская)</b>: Сб 12:00\n• <b>ААА (Мужская)</b>: Сб 17:00" + help_text)
-        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/70000001112488343")],
-              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-    elif data == "s_tim":
-        text = ("🏢 <b>Тимирязева 42, корпус 23, каб 102</b>\n\n• <b>Друзья Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00" + help_text)
-        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/9430047374971407/76.904347,43.217837")],
-              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-    elif data == "s_kaskelen":
-        text = ("🏢 <b>ТД «Нур-Жанат» (г. Каскелен)</b>\n\n• <b>Группа «Туран»</b>: Пн, Ср, Сб 17:00–18:15" + help_text)
-        kb = [[InlineKeyboardButton(text="📍 Открыть в 2GIS", url="https://2gis.kz/almaty/geo/70030076201734271/76.642795,43.201247")],
-              [InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-    elif data == "s_other":
-        text = ("📍 <b>Другие локации</b>\n\n• <b>Аксай</b>: Вс 13:00\n• <b>НОВЫЕ ОЧКИ</b>: Пн, Ср, Пт 19:00, Сб 14:00\n• <b>Боралдай</b>: Сб 17:00\n• <b>Талхиз (Талгар)</b>: Пн, Чт, Пт 19:00" + help_text)
-        kb = [[InlineKeyboardButton(text="⬅️ Назад", callback_data="s_back")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-    await callback.answer()
-
-@router.message(F.text.in_({"❓ Помощь", "❓ Көмек"}))
+@router.message(F.text.in_({"? Помощь", "❓ Помощь", "❓ Көмек", "? Көмек"}))
 async def help_section_handler(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     t = TEXTS[lang]
@@ -334,13 +242,13 @@ async def handle_beginner_questions(message: types.Message, state: FSMContext):
     menu_buttons = [
         "📖 Ежедневные размышления", "🙏 11 Шаг", 
         "➕ Стать спонсором", "🤝 Спонсоры", 
-        "📅 Расписание", "❓ Помощь", "🏠 Главное меню", "Главное меню",
+        "📅 Расписание", "🗓 Расписание", "❓ Помощь", "? Помощь", "🏠 Главное меню", "Главное меню",
         "📖 Күнделікті ой-толғаулар", "🙏 11 Қадам", 
         "➕ Демеуші болу", "🤝 Демеушілер", 
-        "📅 Кесте", "❓ Көмек", "🏠 Басты мәзір", "Басты мәзір",
+        "📅 Кесте", "🗓 Кесте", "❓ Көмек", "? Көмек", "🏠 Басты мәзір", "Басты мәзір",
         "🌐 Язык: Русский", "🌐 Тіл: Қазақша"
     ]
-    if message.text in menu_buttons or "Демеуші болу" in message.text or "Стать спонсором" in message.text:
+    if message.text in menu_buttons:
         return
 
     await message.bot.send_chat_action(chat_id=message.chat.id, action="typing")
