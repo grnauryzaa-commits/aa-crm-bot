@@ -2,7 +2,7 @@ import logging
 import psycopg2
 from aiogram import Router, types
 from aiogram.filters import Command
-from config import DATABASE_URL  # Используем общую конфигурацию, если она там есть, либо твой DB_URL
+from config import DATABASE_URL
 from database import get_user_language
 from routers.menu import get_main_menu_keyboard
 
@@ -44,9 +44,9 @@ async def cmd_start(message: types.Message):
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO users (telegram_id, username, full_name) 
+            INSERT INTO users (user_id, username, full_name) 
             VALUES (%s, %s, %s)
-            ON CONFLICT (telegram_id) 
+            ON CONFLICT (user_id) 
             DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name;
             """,
             (telegram_id, username, full_name)
@@ -70,9 +70,15 @@ async def cmd_start(message: types.Message):
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление админу: {e}")
     
-    # Получаем язык пользователя из базы данных
+    # 1. Получаем актуальный язык пользователя из базы данных ("ru" или "kk")
     lang = await get_user_language(telegram_id)
     welcome_text = START_TEXTS.get(lang, START_TEXTS["ru"])
     
-    kb = await get_main_menu_keyboard(telegram_id) if "telegram_id" in get_main_menu_keyboard.__code__.co_varnames else get_main_menu_keyboard()
+    # 2. Передаем именно текстовый язык в генератор клавиатуры меню
+    try:
+        kb = get_main_menu_keyboard(lang)
+    except TypeError:
+        # Если функция вдруг ожидает без аргументов, вызываем так (но лучше чтобы принимала lang)
+        kb = get_main_menu_keyboard()
+
     await message.answer(welcome_text, parse_mode="HTML", reply_markup=kb)
