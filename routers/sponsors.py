@@ -133,7 +133,7 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
   )
 
 
-# --- ПЕРЕХВАТ КНОПКИ СТАТЬ СПОНСОРОМ (РАБОТАЕТ И НА РУССКОМ, И НА КАЗАХСКОМ) ---
+# --- ПЕРЕХВАТ КНОПКИ СТАТЬ СПОНСОРОМ ---
 @router.message(
     F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
     | F.text.contains("Демеуші")
@@ -221,7 +221,6 @@ async def sponsors_menu(event: Message | CallbackQuery):
 )
 async def show_list_page(callback: CallbackQuery):
   parts = callback.data.split("_")
-  # Формат callback_data: list_[brothers|sisters]_[page]_[lang]
   list_type = parts[1]
   page = int(parts[2])
   lang = parts[3] if len(parts) > 3 else "ru"
@@ -293,6 +292,7 @@ async def show_list_page(callback: CallbackQuery):
   if nav_buttons:
     keyboard.append(nav_buttons)
 
+  # ИСПРАВЛЕНИЕ: Кнопка возврата теперь учитывает текущий язык (lang)
   keyboard.append([
       InlineKeyboardButton(
           text=t["btn_back"], callback_data=f"menu_sponsors_{lang}"
@@ -308,7 +308,6 @@ async def show_list_page(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
   parts = callback.data.split("_")
-  # Формат: view_sp_[user_id]_[list_type]_[page]_[lang]
   user_id = parts[2]
   list_type = parts[3]
   page = parts[4]
@@ -372,7 +371,6 @@ async def show_details(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("start_sponsor_registration"))
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
   try:
-    # Достаем язык прямо из callback_data если передан, иначе из базы
     parts = callback.data.split("_")
     lang = parts[3] if len(parts) > 3 else None
 
