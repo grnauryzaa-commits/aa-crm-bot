@@ -217,13 +217,18 @@ async def sponsors_menu(event: Message | CallbackQuery):
 
 
 @router.callback_query(
-    F.data.startswith(("list_brothers_", "list_sisters_"))
+    F.data.startswith(("list_brothers_", "list_sisters_", "list_"))
 )
 async def show_list_page(callback: CallbackQuery):
   parts = callback.data.split("_")
   list_type = parts[1]
   page = int(parts[2])
   lang = parts[3] if len(parts) > 3 else "ru"
+
+  if not lang or lang not in ["ru", "kk"]:
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+      lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -233,7 +238,6 @@ async def show_list_page(callback: CallbackQuery):
       else "OR gender ILIKE '%жен%'"
   )
 
-  # Правильный выбор локализованной метки для заголовка
   label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
   db_keyword = "брат" if list_type == "brothers" else "сестр"
 
@@ -293,6 +297,7 @@ async def show_list_page(callback: CallbackQuery):
   if nav_buttons:
     keyboard.append(nav_buttons)
 
+  # Единственная кнопка возврата в меню
   keyboard.append([
       InlineKeyboardButton(
           text=t["btn_back"], callback_data=f"menu_sponsors_{lang}"
