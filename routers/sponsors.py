@@ -94,11 +94,11 @@ FORM_TEXTS = {
         "admin_decline": "❌ Бас тарту",
         "approved_alert": "Сауалнама мақұлданды!",
         "declined_alert": "Сауалнама қабылданбады.",
-        "user_approved": (
-            "🎉 Құттықтаймыз! Сіздің демеуші сауалнамаңыз мақұлданды."
-        ),
         "user_declined": (
             "❌ Өкінішке орай, сіздің демеуші сауалнамаңыз қабылданбады."
+        ),
+        "user_approved": (
+            "🎉 Құттықтаймыз! Сіздің демеуші сауалнамаңыз мақұлданды."
         ),
         "fallback_become": "➕ Демеуші болу",
         "fallback_list": "📋 Демеушілер тізімі",
@@ -176,7 +176,7 @@ async def start_form_text(message: Message, state: FSMContext):
     | F.text.contains("Спонсоры")
 )
 @router.callback_query(
-    F.data == "menu_sponsors" or F.data.startswith("menu_sponsors_")
+    (F.data == "menu_sponsors") | (F.data.startswith("menu_sponsors_"))
 )
 async def sponsors_menu(event: Message | CallbackQuery):
   user_id = event.from_user.id
