@@ -67,7 +67,6 @@ EVENING_PRAYER_TEXT_KK = (
     "🙏 <b>Қайырлы түн!</b>"
 )
 
-# Обратная совместимость
 MORNING_PRAYER_TEXT = MORNING_PRAYER_TEXT_RU
 EVENING_PRAYER_TEXT = EVENING_PRAYER_TEXT_RU
 
@@ -87,65 +86,86 @@ def format_reflection_text(text, today, lang="ru"):
     body = "\n\n".join(filtered)
     
     if lang == "kk":
-        months = [
+        months_kk = [
             "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның", 
             "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның"
         ]
-        return f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
+        return f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n📋 <b>{today.day} {months_kk[today.month - 1]}</b>\n\n{html.escape(body)}"
     else:
-        months = [
+        months_ru = [
             "января", "февраля", "марта", "апреля", "мая", "июня", 
             "июля", "августа", "сентября", "октября", "ноября", "декабря"
         ]
-        return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months[today.month - 1]}</b>\n\n{html.escape(body)}"
+        return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months_ru[today.month - 1]}</b>\n\n{html.escape(body)}"
 
 
 async def send_daily_reflection_to_channel(bot):
-    """Отправка ежедневных размышлений сразу на двух языках (сначала KK, затем RU)"""
+    """Отправка ежедневных размышлений: казахский из таблицы reflections, русский из reflections_archive"""
     today = datetime.now()
+    
+    months_map_kk = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август", 
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+    }
+    current_month_name = months_map_kk.get(today.month, "Январь")
+
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        cur.execute("SELECT text FROM reflections_archive WHERE day = %s AND month = %s", (today.day, today.month))
-        row = cur.fetchone()
+        
+        # 1. Получаем казахский вариант из таблицы reflections
+        cur.execute("SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s", 
+                    (current_month_name, today.day - 1))
+        row_kk = cur.fetchone()
+
+        # 2. Получаем русский вариант из таблицы reflections_archive 
+        # (если структура полей такая же: month, title, text)
+        cur.execute("SELECT title, text FROM reflections_archive WHERE month = %s LIMIT 1 OFFSET %s", 
+                    (current_month_name, today.day - 1))
+        row_ru = cur.fetchone()
+        
         cur.close()
         conn.close()
         
-        if row:
-            # 1. Отправляем на казахском языке
-            text_kk = format_reflection_text(row[0], today, lang="kk")
+        # Отправляем казахский вариант
+        if row_kk:
+            title_kk, content_kk = row_kk
+            full_text_kk = f"📌 <b>{title_kk}</b>\n\n{content_kk}"
+            text_kk = format_reflection_text(full_text_kk, today, lang="kk")
             await bot.send_message(CHANNEL_ID, text_kk, parse_mode="HTML")
-            
-            # Небольшая пауза между сообщениями, чтобы они не слипались
             await asyncio.sleep(1)
-            
-            # 2. Отправляем на русском языке
-            text_ru = format_reflection_text(row[0], today, lang="ru")
+        else:
+            logging.warning(f"Казахское размышление на сегодня (месяц: {current_month_name}, день: {today.day}) не найдено.")
+
+        # Отправляем русский вариант
+        if row_ru:
+            title_ru, content_ru = row_ru
+            full_text_ru = f"📌 <b>{title_ru}</b>\n\n{content_ru}"
+            text_ru = format_reflection_text(full_text_ru, today, lang="ru")
             await bot.send_message(CHANNEL_ID, text_ru, parse_mode="HTML")
+        else:
+            logging.warning(f"Русское размышление на сегодня в reflections_archive не найдено.")
             
     except Exception as e:
-        logging.error(f"Ошибка двуязычной рассылки размышлений: {e}")
+        logging.error(f"Ошибка двуязычной рассылки размышлений из БД: {e}")
 
 
 async def send_morning_prayer_to_channel(bot):
     """Отправка утренней молитвы 11 шага сразу на двух языках"""
     try:
-        # Сначала на казахском
         await bot.send_message(CHANNEL_ID, MORNING_PRAYER_TEXT_KK, parse_mode="HTML")
         await asyncio.sleep(1)
-        # Затем на русском
         await bot.send_message(CHANNEL_ID, MORNING_PRAYER_TEXT_RU, parse_mode="HTML")
     except Exception as e:
-        logging.error(f"Ошибка отправки утренней молитвы (двуязычной): {e}")
+        logging.error(f"Ошибка отправки утренней молитвы: {e}")
 
 
 async def send_evening_prayer_to_channel(bot):
     """Отправка вечерней молитвы 11 шага сразу на двух языках"""
     try:
-        # Сначала на казахском
         await bot.send_message(CHANNEL_ID, EVENING_PRAYER_TEXT_KK, parse_mode="HTML")
         await asyncio.sleep(1)
-        # Затем на русском
         await bot.send_message(CHANNEL_ID, EVENING_PRAYER_TEXT_RU, parse_mode="HTML")
     except Exception as e:
-        logging.error(f"Ошибка отправки вечерней молитвы (двуязычной): {e}")
+        logging.error(f"Ошибка отправки вечерней молитвы: {e}")
