@@ -126,7 +126,7 @@ def get_main_menu_keyboard(lang="ru"):
   )
 
 
-def format_reflection_text(text, today):
+def format_reflection_text(text, today, lang="ru"):
   lines = [l.strip() for l in text.split("\n") if l.strip()]
   forbidden = [
       "WWW.MOS-NACH.RU",
@@ -170,25 +170,26 @@ def format_reflection_text(text, today):
     filtered.pop(0)
 
   body = "\n\n".join(filtered)
-  months = [
-      "января",
-      "февраля",
-      "марта",
-      "апреля",
-      "мая",
-      "июня",
-      "июля",
-      "августа",
-      "сентября",
-      "октября",
-      "ноября",
-      "декабря",
-  ]
   escaped_body = html.escape(body)
-  return (
-      f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day}"
-      f" {months[today.month - 1]}</b>\n\n{escaped_body}"
-  )
+
+  if lang == "kk":
+    months_kk = [
+        "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның", 
+        "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның"
+    ]
+    return (
+        f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n📋 <b>{today.day}"
+        f" {months_kk[today.month - 1]}</b>\n\n{escaped_body}"
+    )
+  else:
+    months_ru = [
+        "января", "февраля", "марта", "апреля", "мая", "июня", 
+        "июля", "августа", "сентября", "октября", "ноября", "декабря"
+    ]
+    return (
+        f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day}"
+        f" {months_ru[today.month - 1]}</b>\n\n{escaped_body}"
+    )
 
 
 @router.message(F.chat.type == "private", Command("start"))
@@ -273,7 +274,6 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
   await state.clear()
   user_id = message.from_user.id
 
-  # Строго опираемся на реальный язык пользователя из базы, чтобы не было путаницы
   lang = await get_user_language(user_id)
   if not lang:
     lang = "ru"
@@ -321,18 +321,38 @@ async def show_daily_reflection(message: types.Message):
   lang = await get_user_language(message.from_user.id)
   if not lang:
     lang = "ru"
+  
+  months_map_kk = {
+      1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 
+      5: "Май", 6: "Июнь", 7: "Июль", 8: "Август", 
+      9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+  }
+  current_month_name = months_map_kk.get(today.month, "Январь")
+
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    cur.execute(
-        "SELECT text FROM reflections_archive WHERE day = %s AND month = %s",
-        (today.day, today.month),
-    )
+    
+    # Динамически выбираем таблицу и язык в зависимости от выбора пользователя
+    if lang == "kk":
+      cur.execute(
+          "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
+          (current_month_name, today.day - 1),
+      )
+    else:
+      cur.execute(
+          "SELECT title, text FROM reflections_archive WHERE month = %s LIMIT 1 OFFSET %s",
+          (current_month_name, today.day - 1),
+      )
+      
     row = cur.fetchone()
     cur.close()
     conn.close()
+    
     if row:
-      text = format_reflection_text(row[0], today)
+      title, content = row
+      full_text = f"📌 <b>{title}</b>\n\n{content}"
+      text = format_reflection_text(full_text, today, lang=lang)
       await message.answer(
           text, parse_mode="HTML", reply_markup=get_main_menu_keyboard(lang)
       )
