@@ -11,7 +11,6 @@ from routers.reflections import (
     EVENING_PRAYER_TEXT_RU,
     MORNING_PRAYER_TEXT_KK,
     MORNING_PRAYER_TEXT_RU,
-    send_daily_reflection_to_channel,
 )
 import psycopg2
 
@@ -125,6 +124,72 @@ def get_main_menu_keyboard(lang="ru"):
       resize_keyboard=True,
       input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇",
   )
+
+
+def format_reflection_text(text, today, lang="ru"):
+  lines = [l.strip() for l in text.split("\n") if l.strip()]
+  forbidden = [
+      "WWW.MOS-NACH.RU",
+      "Анонимные Алкоголики.",
+      "Группа",
+      "Поделиться:",
+      "Рассказать:",
+      "Twitter",
+      "Facebook",
+      "Vkontakte",
+      "WhatsApp",
+      "Telegram",
+      "EMail",
+      "Тег audio",
+      "Aудио-ежедневник",
+      "Skype",
+      "Mail",
+      "Альтернативный вариант",
+      "Ежедневные Размышления на",
+      "Сегодня",
+  ]
+  filtered = [
+      line
+      for line in lines
+      if not any(
+          f in line.casefold() for f in [x.casefold() for x in forbidden]
+      )
+  ]
+
+  if (
+      len(filtered) > 0
+      and f"{today.day}" in filtered[0]
+      and len(filtered[0]) < 25
+  ):
+    filtered.pop(0)
+  if (
+      len(filtered) > 0
+      and f"{today.day}" in filtered[0]
+      and len(filtered[0]) < 25
+  ):
+    filtered.pop(0)
+
+  body = "\n\n".join(filtered)
+  escaped_body = html.escape(body)
+
+  if lang == "kk":
+    months_kk = [
+        "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның", 
+        "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның"
+    ]
+    return (
+        f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n📋 <b>{today.day}"
+        f" {months_kk[today.month - 1]}</b>\n\n{escaped_body}"
+    )
+  else:
+    months_ru = [
+        "января", "февраля", "марта", "апреля", "мая", "июня", 
+        "июля", "августа", "сентября", "октября", "ноября", "декабря"
+    ]
+    return (
+        f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day}"
+        f" {months_ru[today.month - 1]}</b>\n\n{escaped_body}"
+    )
 
 
 @router.message(F.chat.type == "private", Command("start"))
@@ -252,16 +317,69 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
     F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}),
 )
 async def show_daily_reflection(message: types.Message):
+  today = datetime.now()
   lang = await get_user_language(message.from_user.id)
   if not lang:
     lang = "ru"
-  
-  # Передаем язык и ID текущего чата пользователя в функцию из reflections.py
-  await send_daily_reflection_to_channel(
-      bot=message.bot, 
-      lang=lang, 
-      target_chat_id=message.chat.id
-  )
+    
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    
+    if lang == "kk":
+      # Казахская таблица ищет по названию месяца и смещению (как у вас было настроено)
+      months_map_kk = {
+          1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 
+          5: "Май", 6: "Июнь", 7: "Июль", 8: "Август", 
+          9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+      }
+      current_month_name = months_map_kk.get(today.month, "Январь")
+      cur.execute(
+          "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
+          (current_month_name, today.day - 1),
+      )
+      row = cur.fetchone()
+      if row:
+        title, content = row
+        full_text = f"📌 <b>{title}</b>\n\n{content}"
+        text = format_reflection_text(full_text, today, lang=lang)
+      else:
+        text = None
+    else:
+      # Русский архив работает ровно так, как в вашем исходном рабочем коде
+      cur.execute(
+          "SELECT text FROM reflections_archive WHERE day = %s AND month = %s",
+          (today.day, today.month),
+      )
+      row = cur.fetchone()
+      if row:
+        text = format_reflection_text(row[0], today, lang=lang)
+      else:
+        text = None
+
+    cur.close()
+    conn.close()
+    
+    if text:
+      await message.answer(
+          text, parse_mode="HTML", reply_markup=get_main_menu_keyboard(lang)
+      )
+    else:
+      msg = (
+          "На сегодня размышления не найдены в базе."
+          if lang == "ru"
+          else "Бүгінге ой-толғаулар табылмады."
+      )
+      await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+      
+  except Exception as e:
+    logging.error(f"Ошибка получения размышлений: {e}")
+    msg = (
+        "Произошла ошибка при получении размышлений."
+        if lang == "ru"
+        else "Ой-толғауларды алу кезінде қате орын алды."
+    )
+    await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
 
 
 @router.message(
