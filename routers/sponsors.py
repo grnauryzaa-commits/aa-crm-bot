@@ -428,14 +428,28 @@ async def show_details(callback: CallbackQuery):
           f" {tg_contact}\n📞 Телефон: {phone}"
       )
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                text=t["btn_back"],
-                callback_data=f"list_{list_type}_{page}_{lang}",
-            )
-        ]
-    ]
+    keyboard = []
+
+    # Возвращаем кнопку редактирования прямо под карточку для её владельца или админа
+    current_user_id = callback.from_user.id
+    if str(current_user_id) == str(user_id) or current_user_id in ADMINS:
+      edit_text = (
+          t.get("btn_edit", "✏️ Редактировать анкету")
+          if lang == "ru"
+          else "✏️ Сауалнаманы өңдеу"
+      )
+      keyboard.append([
+          InlineKeyboardButton(
+              text=edit_text,
+              callback_data=f"start_sponsor_registration_{lang}",
+          )
+      ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            text=t["btn_back"], callback_data=f"list_{list_type}_{page}_{lang}"
+        )
+    ])
 
     await callback.message.edit_text(
         text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
