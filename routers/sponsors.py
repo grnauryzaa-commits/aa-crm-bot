@@ -3,6 +3,7 @@ import traceback
 import psycopg2
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -17,6 +18,18 @@ from database import get_user_language, save_sponsor_draft
 from routers.states import SponsorForm
 
 router = Router()
+
+
+# Дополнительные состояния для точечного редактирования полей
+class SponsorEditForm(StatesGroup):
+  edit_name = State()
+  edit_gender = State()
+  edit_age = State()
+  edit_sobriety = State()
+  edit_city = State()
+  edit_program_info = State()
+  edit_phone = State()
+
 
 # Словари локализации для анкеты и списков (русский / казахский)
 FORM_TEXTS = {
@@ -62,6 +75,19 @@ FORM_TEXTS = {
         "btn_back": "⬅️ Назад",
         "btn_forward": "Вперед ➡️",
         "btn_edit": "✏️ Редактировать анкету",
+        "edit_menu_title": (
+            "✏️ <b>Редактирование анкеты</b>\n\nВыберите поле, которое хотите"
+            " изменить:"
+        ),
+        "edit_name_btn": "👤 Имя",
+        "edit_gender_btn": "🚻 Пол",
+        "edit_age_btn": "📅 Возраст",
+        "edit_sobriety_btn": "🕊 Трезвость",
+        "edit_city_btn": "📍 Город",
+        "edit_program_btn": "📖 Опыт",
+        "edit_phone_btn": "📞 Телефон",
+        "edit_finish_btn": "✅ Готово (отправить на модерацию)",
+        "field_updated": "✅ Поле успешно изменено!",
         "label_brothers": "Братья",
         "label_sisters": "Сестры",
         "default_city": "Город не указан",
@@ -112,6 +138,19 @@ FORM_TEXTS = {
         "btn_back": "⬅️ Артқа",
         "btn_forward": "Алға ➡️",
         "btn_edit": "✏️ Сауалнаманы өңдеу",
+        "edit_menu_title": (
+            "✏️ <b>Сауалнаманы өңдеу</b>\n\nӨзгерткіңіз келетін өрісті"
+            " таңдаңыз:"
+        ),
+        "edit_name_btn": "👤 Аты",
+        "edit_gender_btn": "🚻 Жынысы",
+        "edit_age_btn": "📅 Жасы",
+        "edit_sobriety_btn": "🕊 Тазалық",
+        "edit_city_btn": "📍 Қаласы",
+        "edit_program_btn": "📖 Тәжірибесі",
+        "edit_phone_btn": "📞 Телефон",
+        "edit_finish_btn": "✅ Дайын (модерацияға жіберу)",
+        "field_updated": "✅ Өріс сәтті өзгертілді!",
         "label_brothers": "Бауырлар",
         "label_sisters": "Әпкелер",
         "default_city": "Қала көрсетілмеген",
@@ -150,16 +189,32 @@ async def start_form_text(message: Message, state: FSMContext):
 
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=t["btn_fill"],
-                    callback_data=f"start_sponsor_registration_{lang}",
-                )
-            ]
-        ]
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT 1 FROM sponsors WHERE user_id = %s;", (message.from_user.id,)
     )
+    is_sponsor = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    keyboard_buttons = [
+        [
+            InlineKeyboardButton(
+                text=t["btn_fill"],
+                callback_data=f"start_sponsor_registration_{lang}",
+            )
+        ]
+    ]
+
+    if is_sponsor:
+      keyboard_buttons.append([
+          InlineKeyboardButton(
+              text=t["btn_edit"], callback_data=f"open_edit_menu_{lang}"
+          )
+      ])
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
     await message.answer(
         t["menu_title"], reply_markup=keyboard, parse_mode="HTML"
     )
@@ -265,7 +320,6 @@ async def show_list_page(callback: CallbackQuery):
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
   label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
 
-  # Исправленный фильтр: учитывает русские и казахские варианты пола в БД
   if list_type == "brothers":
     db_query_filter = (
         "gender ILIKE '%брат%' OR gender ILIKE '%муж%' OR gender ILIKE"
@@ -412,6 +466,17 @@ async def show_details(callback: CallbackQuery):
         ]
     ]
 
+    if int(user_id) == callback.from_user.id:
+      keyboard.insert(
+          0,
+          [
+              InlineKeyboardButton(
+                  text=t["btn_edit"],
+                  callback_data=f"open_edit_menu_{lang}",
+              )
+          ],
+      )
+
     await callback.message.edit_text(
         text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
     )
@@ -419,7 +484,357 @@ async def show_details(callback: CallbackQuery):
     await callback.answer(t["not_found"], show_alert=True)
 
 
-# --- ЗАПОЛНЕНИЕ АНКЕТЫ С СОХРАНЕНИЕМ ЯЗЫКА ---
+# --- ЛОГИКА ТОЧЕЧНОГО РЕДАКТИРОВАНИЯ ---
+
+
+@router.callback_query(F.data.startswith("open_edit_menu_"))
+async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
+  user_id = callback.from_user.id
+  parts = callback.data.split("_")
+  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  # Подгружаем текущие данные из базы (сначала ищем в черновиках, если нет — в основных)
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT name, gender, age, sobriety, city, program_info, phone FROM"
+        " sponsor_drafts WHERE user_id = %s;",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+      cur.execute(
+          "SELECT name, gender, age, sobriety, city, program_info, phone FROM"
+          " sponsors WHERE user_id = %s;",
+          (user_id,),
+      )
+      row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if row:
+      await state.update_data(
+          lang=lang,
+          name=row[0],
+          gender=row[1],
+          age=row[2],
+          sobriety=row[3],
+          city=row[4],
+          program_info=row[5],
+          phone=row[6],
+      )
+  except Exception as e:
+    print(f"Ошибка загрузки данных для редактирования: {e}")
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["edit_name_btn"], callback_data="edit_field_name"
+              ),
+              InlineKeyboardButton(
+                  text=t["edit_gender_btn"], callback_data="edit_field_gender"
+              ),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_age_btn"], callback_data="edit_field_age"
+              ),
+              InlineKeyboardButton(
+                  text=t["edit_sobriety_btn"],
+                  callback_data="edit_field_sobriety",
+              ),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_city_btn"], callback_data="edit_field_city"
+              ),
+              InlineKeyboardButton(
+                  text=t["edit_program_btn"],
+                  callback_data="edit_field_program",
+              ),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_phone_btn"], callback_data="edit_field_phone"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_finish_btn"], callback_data="edit_finish"
+              )
+          ],
+      ]
+  )
+
+  try:
+    await callback.message.edit_text(
+        t["edit_menu_title"], reply_markup=keyboard, parse_mode="HTML"
+    )
+  except Exception:
+    await callback.message.answer(
+        t["edit_menu_title"], reply_markup=keyboard, parse_mode="HTML"
+    )
+  await callback.answer()
+
+
+@router.callback_query(F.data.startswith("edit_field_"))
+async def choose_field_to_edit(callback: CallbackQuery, state: FSMContext):
+  field = callback.data.split("_")[2]
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  prompts = {
+      "name": (t["ask_name"], SponsorEditForm.edit_name),
+      "gender": (t["ask_gender"], SponsorEditForm.edit_gender),
+      "age": (t["ask_age"], SponsorEditForm.edit_age),
+      "sobriety": (t["ask_sobriety"], SponsorEditForm.edit_sobriety),
+      "city": (t["ask_city"], SponsorEditForm.edit_city),
+      "program": (t["ask_program"], SponsorEditForm.edit_program_info),
+      "phone": (t["ask_phone"], SponsorEditForm.edit_phone),
+  }
+
+  if field in prompts:
+    text, target_state = prompts[field]
+    await callback.message.answer(text, reply_markup=ReplyKeyboardRemove())
+    await state.set_state(target_state)
+  await callback.answer()
+
+
+# Хендлеры сохранения измененных полей и возврата в меню редактирования
+async def save_and_return_to_edit(
+    message: Message, state: FSMContext, field_name: str, value: str
+):
+  await state.update_data(**{field_name: value})
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await message.answer(t["field_updated"])
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["edit_name_btn"], callback_data="edit_field_name"
+              ),
+              InlineKeyboardButton(
+                  text=t["edit_gender_btn"], callback_data="edit_field_gender"
+              ),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_age_btn"], callback_data="edit_field_age"
+              ),
+              InlineKeyboardButton(
+                  text=t["edit_sobriety_btn"],
+                  callback_data="edit_field_sobriety",
+              ),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_city_btn"], callback_data="edit_field_city"
+              ),
+              InlineKeyboardButton(
+                  text=t["edit_program_btn"],
+                  callback_data="edit_field_program",
+              ),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_phone_btn"], callback_data="edit_field_phone"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["edit_finish_btn"], callback_data="edit_finish"
+              )
+          ],
+      ]
+  )
+  await state.set_state(None)
+  await message.answer(
+      t["edit_menu_title"], reply_markup=keyboard, parse_mode="HTML"
+  )
+
+
+@router.message(F.chat.type == "private", SponsorEditForm.edit_name)
+async def update_name(message: Message, state: FSMContext):
+  await save_and_return_to_edit(message, state, "name", message.text)
+
+
+@router.message(F.chat.type == "private", SponsorEditForm.edit_gender)
+async def update_gender(message: Message, state: FSMContext):
+  await save_and_return_to_edit(message, state, "gender", message.text)
+
+
+@router.message(F.chat.type == "private", SponsorEditForm.edit_age)
+async def update_age(message: Message, state: FSMContext):
+  await save_and_return_to_edit(message, state, "age", message.text)
+
+
+@router.message(F.chat.type == "private", SponsorEditForm.edit_sobriety)
+async def update_sobriety(message: Message, state: FSMContext):
+  await save_and_return_to_edit(message, state, "sobriety", message.text)
+
+
+@router.message(F.chat.type == "private", SponsorEditForm.edit_city)
+async def update_city(message: Message, state: FSMContext):
+  await save_and_return_to_edit(message, state, "city", message.text)
+
+
+@router.message(F.chat.type == "private", SponsorEditForm.edit_program_info)
+async def update_program(message: Message, state: FSMContext):
+  await save_and_return_to_edit(message, state, "program_info", message.text)
+
+
+@router.message(F.chat.type == "private", SponsorEditForm.edit_phone)
+async def update_phone(message: Message, state: FSMContext, bot: Bot):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await state.update_data(phone=message.text)
+  data = await state.get_data()
+  tg_id = message.from_user.id
+
+  sponsor_data = {
+      "name": data.get("name"),
+      "gender": data.get("gender"),
+      "age": data.get("age"),
+      "sobriety": data.get("sobriety"),
+      "city": data.get("city"),
+      "program_info": data.get("program_info"),
+      "username": message.from_user.username or "нет",
+      "phone": data.get("phone"),
+  }
+
+  try:
+    await save_sponsor_draft(tg_id, sponsor_data)
+  except Exception as e:
+    print(f"Ошибка сохранения черновика в БД: {e}")
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["admin_approve"],
+                  callback_data=f"approve_sp_{tg_id}",
+              ),
+              InlineKeyboardButton(
+                  text=t["admin_decline"],
+                  callback_data=f"decline_sp_{tg_id}",
+              ),
+          ]
+      ]
+  )
+
+  admin_text = (
+      f"🔔 ИЗМЕНЕНИЕ АНКЕТЫ / {t['admin_title']}\n"
+      "━━━━━━━━━━━━━━━━━━\n"
+      f"👤 Имя: {html.escape(str(sponsor_data['name']))} ({html.escape(str(sponsor_data['gender']))})\n"
+      f"📅 Возраст: {html.escape(str(sponsor_data['age']))}\n"
+      f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
+      f"📍 Город: {html.escape(str(sponsor_data['city']))}\n\n"
+      f"📖 Опыт/Программа: {html.escape(str(sponsor_data['program_info']))}\n"
+      f"✈️ Telegram: @{html.escape(str(sponsor_data['username']))}\n"
+      f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
+      "━━━━━━━━━━━━━━━━━━"
+  )
+
+  for admin_id in ADMINS:
+    try:
+      await bot.send_message(
+          chat_id=admin_id,
+          text=admin_text,
+          reply_markup=keyboard,
+          parse_mode="HTML",
+      )
+    except Exception as e:
+      print(f"Не удалось отправить админу {admin_id}: {e}")
+
+  await message.answer(
+      t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
+  )
+  await state.clear()
+
+
+@router.callback_query(F.data == "edit_finish")
+async def finish_editing(callback: CallbackQuery, state: FSMContext, bot: Bot):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+  tg_id = callback.from_user.id
+
+  sponsor_data = {
+      "name": data.get("name"),
+      "gender": data.get("gender"),
+      "age": data.get("age"),
+      "sobriety": data.get("sobriety"),
+      "city": data.get("city"),
+      "program_info": data.get("program_info"),
+      "username": callback.from_user.username or "нет",
+      "phone": data.get("phone"),
+  }
+
+  try:
+    await save_sponsor_draft(tg_id, sponsor_data)
+  except Exception as e:
+    print(f"Ошибка сохранения черновика в БД: {e}")
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["admin_approve"],
+                  callback_data=f"approve_sp_{tg_id}",
+              ),
+              InlineKeyboardButton(
+                  text=t["admin_decline"],
+                  callback_data=f"decline_sp_{tg_id}",
+              ),
+          ]
+      ]
+  )
+
+  admin_text = (
+      f"🔔 ИЗМЕНЕНИЕ АНКЕТЫ / {t['admin_title']}\n"
+      "━━━━━━━━━━━━━━━━━━\n"
+      f"👤 Имя: {html.escape(str(sponsor_data['name']))} ({html.escape(str(sponsor_data['gender']))})\n"
+      f"📅 Возраст: {html.escape(str(sponsor_data['age']))}\n"
+      f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
+      f"📍 Город: {html.escape(str(sponsor_data['city']))}\n\n"
+      f"📖 Опыт/Программа: {html.escape(str(sponsor_data['program_info']))}\n"
+      f"✈️ Telegram: @{html.escape(str(sponsor_data['username']))}\n"
+      f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
+      "━━━━━━━━━━━━━━━━━━"
+  )
+
+  for admin_id in ADMINS:
+    try:
+      await bot.send_message(
+          chat_id=admin_id,
+          text=admin_text,
+          reply_markup=keyboard,
+          parse_mode="HTML",
+      )
+    except Exception as e:
+      print(f"Не удалось отправить админу {admin_id}: {e}")
+
+  await callback.message.edit_text(
+      t["success_draft"], reply_markup=None
+  )  # Используем edit_text, чтобы не плодить сообщения
+  await callback.message.answer(
+      t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
+  )
+  await state.clear()
+  await callback.answer()
+
+
+# --- ЗАПОЛНЕНИЕ НОВОЙ АНКЕТЫ (КЛАССИЧЕСКОЕ) ---
 @router.callback_query(F.data.startswith("start_sponsor_registration"))
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
   if callback.message.chat.type != "private":
