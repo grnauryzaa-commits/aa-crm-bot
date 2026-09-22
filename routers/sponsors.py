@@ -225,13 +225,13 @@ async def sponsors_menu(event: Message | CallbackQuery):
 )
 async def show_list_page(callback: CallbackQuery):
   parts = callback.data.split("_")
+  if len(parts) < 4:
+    await callback.answer("Ошибка навигации", show_alert=True)
+    return
+
   list_type = parts[1]
   page = int(parts[2])
-  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
-  if not lang:
-    lang = await get_user_language(callback.from_user.id)
-    if not lang:
-      lang = "ru"
+  lang = parts[3] if parts[3] in ["ru", "kk"] else "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -305,23 +305,27 @@ async def show_list_page(callback: CallbackQuery):
       )
   ])
 
-  await callback.message.edit_text(
-      f"📖 ({label}) — {page + 1} / {total_pages}:",
-      reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-  )
+  try:
+    await callback.message.edit_text(
+        f"📖 ({label}) — {page + 1} / {total_pages}:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+    )
+  except Exception:
+    pass
+  await callback.answer()
 
 
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
   parts = callback.data.split("_")
+  if len(parts) < 6:
+    await callback.answer("Ошибка запроса", show_alert=True)
+    return
+
   user_id = parts[2]
   list_type = parts[3]
   page = parts[4]
-  lang = parts[5] if len(parts) > 5 and parts[5] in ["ru", "kk"] else None
-  if not lang:
-    lang = await get_user_language(callback.from_user.id)
-    if not lang:
-      lang = "ru"
+  lang = parts[5] if parts[5] in ["ru", "kk"] else "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -389,20 +393,28 @@ async def show_details(callback: CallbackQuery):
           ],
       )
 
-    await callback.message.edit_text(
-        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
-    )
+    try:
+      await callback.message.edit_text(
+          text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+      )
+    except Exception:
+      pass
   else:
     await callback.answer(t["not_found"], show_alert=True)
+  await callback.answer()
 
 
 @router.callback_query(F.data.startswith("edit_menu_"))
 async def edit_menu(callback: CallbackQuery):
   parts = callback.data.split("_")
+  if len(parts) < 6:
+    await callback.answer("Ошибка", show_alert=True)
+    return
+
   user_id = parts[2]
   list_type = parts[3]
   page = parts[4]
-  lang = parts[5] if len(parts) > 5 and parts[5] in ["ru", "kk"] else "ru"
+  lang = parts[5] if parts[5] in ["ru", "kk"] else "ru"
 
   if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
     await callback.answer(
@@ -460,19 +472,27 @@ async def edit_menu(callback: CallbackQuery):
           ],
       ]
   )
-  await callback.message.edit_text(
-      "⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard
-  )
+  try:
+    await callback.message.edit_text(
+        "⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard
+    )
+  except Exception:
+    pass
+  await callback.answer()
 
 
 @router.callback_query(F.data.startswith("edit_field_"))
 async def start_editing_field(callback: CallbackQuery, state: FSMContext):
   parts = callback.data.split("_")
+  if len(parts) < 7:
+    await callback.answer("Ошибка", show_alert=True)
+    return
+
   user_id = parts[2]
   field_name = parts[3]
   list_type = parts[4]
   page = parts[5]
-  lang = parts[6] if len(parts) > 6 and parts[6] in ["ru", "kk"] else "ru"
+  lang = parts[6] if parts[6] in ["ru", "kk"] else "ru"
 
   if field_name == "programinfo":
     field_name = "program_info"
