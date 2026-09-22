@@ -160,7 +160,19 @@ async def start_form_text(message: Message, state: FSMContext):
 )
 async def sponsors_menu(event: Message | CallbackQuery):
   user_id = event.from_user.id
-  lang = (await get_user_language(user_id)) or "ru"
+
+  if isinstance(event, Message):
+    if "Демеушілер" in event.text:
+      lang = "kk"
+    else:
+      lang = (await get_user_language(user_id)) or "ru"
+  else:
+    parts = event.data.split("_")
+    if len(parts) >= 3 and parts[-1] in ["ru", "kk"]:
+      lang = parts[-1]
+    else:
+      lang = (await get_user_language(user_id)) or "ru"
+
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
   keyboard = InlineKeyboardMarkup(
@@ -211,7 +223,6 @@ async def show_list_page(callback: CallbackQuery):
     list_type = "brothers"
     lang = "ru"
 
-  # Язык берется строго из кнопки (callback_data), чтобы переключение языков работало моментально
   if not lang or lang not in ["ru", "kk"]:
     lang = (await get_user_language(callback.from_user.id)) or "ru"
 
