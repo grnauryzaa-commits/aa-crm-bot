@@ -206,6 +206,7 @@ async def sponsors_menu(event: Message | CallbackQuery):
 async def show_list_page(callback: CallbackQuery):
   parts = callback.data.split("_")
   try:
+    # Ожидаем формат: list_brothers_0_ru или list_brothers_0_kk
     if len(parts) >= 4 and parts[1] in ["brothers", "sisters"]:
       list_type = parts[1]
       page = int(parts[2])
