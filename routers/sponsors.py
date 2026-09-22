@@ -191,8 +191,11 @@ async def start_form_text(message: Message, state: FSMContext):
 
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
+    # Проверяем и в одобренных, и в черновиках
     cur.execute(
-        "SELECT 1 FROM sponsors WHERE user_id = %s;", (message.from_user.id,)
+        "SELECT 1 FROM sponsors WHERE user_id = %s UNION SELECT 1 FROM"
+        " sponsor_drafts WHERE user_id = %s;",
+        (message.from_user.id, message.from_user.id),
     )
     is_sponsor = cur.fetchone()
     cur.close()
@@ -494,7 +497,6 @@ async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
   lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
-  # Подгружаем текущие данные из базы (сначала ищем в черновиках, если нет — в основных)
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
@@ -604,7 +606,6 @@ async def choose_field_to_edit(callback: CallbackQuery, state: FSMContext):
   await callback.answer()
 
 
-# Хендлеры сохранения измененных полей и возврата в меню редактирования
 async def save_and_return_to_edit(
     message: Message, state: FSMContext, field_name: str, value: str
 ):
@@ -824,9 +825,11 @@ async def finish_editing(callback: CallbackQuery, state: FSMContext, bot: Bot):
     except Exception as e:
       print(f"Не удалось отправить админу {admin_id}: {e}")
 
-  await callback.message.edit_text(
-      t["success_draft"], reply_markup=None
-  )  # Используем edit_text, чтобы не плодить сообщения
+  try:
+    await callback.message.edit_text(t["success_draft"], reply_markup=None)
+  except Exception:
+    pass
+
   await callback.message.answer(
       t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
   )
