@@ -211,6 +211,10 @@ async def show_list_page(callback: CallbackQuery):
     list_type = "brothers"
     lang = "ru"
 
+  # Язык берется строго из кнопки (callback_data), чтобы переключение языков работало моментально
+  if not lang or lang not in ["ru", "kk"]:
+    lang = (await get_user_language(callback.from_user.id)) or "ru"
+
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
   gender_filter = (
       "OR gender ILIKE '%муж%'"
