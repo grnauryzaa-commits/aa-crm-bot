@@ -168,6 +168,40 @@ async def start_form_text(message: Message, state: FSMContext):
     traceback.print_exc()
 
 
+# --- РЕДАКТИРОВАНИЕ / ПОВТОРНОЕ ЗАПОЛНЕНИЕ АНКЕТЫ ---
+@router.message(
+    F.chat.type == "private",
+    (
+        F.text.in_({"✏️ Редактировать анкету", "✏️ Сауалнаманы өңдеу"})
+        | F.text.contains("Редактировать")
+        | F.text.contains("өңдеу")
+    ),
+)
+async def edit_sponsor_start(message: Message, state: FSMContext):
+  try:
+    user_id = message.from_user.id
+    lang = await get_user_language(user_id)
+    if not lang:
+      lang = "ru"
+
+    await state.update_data(lang=lang)
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+    await message.answer(
+        (
+            "✏️ Давайте обновим вашу анкету.\n\n"
+            if lang == "ru"
+            else "✏️ Сауалнамаңызды жаңартейік.\n\n"
+        )
+        + t["ask_name"],
+        reply_markup=ReplyKeyboardRemove(),
+    )
+    await state.set_state(SponsorForm.name)
+  except Exception as e:
+    print(f"Ошибка в edit_sponsor_start: {e}")
+    traceback.print_exc()
+
+
 # --- МЕНЮ СПОНСОРОВ (СПИСКИ БРАТЬЕВ И СЕСТЕР) ---
 @router.message(
     F.chat.type == "private",
