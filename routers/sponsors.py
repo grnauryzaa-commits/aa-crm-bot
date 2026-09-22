@@ -227,20 +227,25 @@ async def show_list_page(callback: CallbackQuery):
     lang = (await get_user_language(callback.from_user.id)) or "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-  gender_filter = (
-      "OR gender ILIKE '%муж%'"
-      if list_type == "brothers"
-      else "OR gender ILIKE '%жен%'"
-  )
   label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
-  db_keyword = "брат" if list_type == "brothers" else "сестр"
+
+  if list_type == "brothers":
+    db_query_filter = (
+        "gender ILIKE '%брат%' OR gender ILIKE '%муж%' OR gender ILIKE"
+        " '%бауыр%'"
+    )
+  else:
+    db_query_filter = (
+        "gender ILIKE '%сестр%' OR gender ILIKE '%жен%' OR gender ILIKE"
+        " '%әпке%'"
+    )
 
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
     cur.execute(
-        f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE gender"
-        f" ILIKE '%{db_keyword}%' {gender_filter};"
+        f"SELECT user_id, name, age, city, sobriety FROM sponsors WHERE"
+        f" {db_query_filter};"
     )
     all_sponsors = cur.fetchall()
     cur.close()
