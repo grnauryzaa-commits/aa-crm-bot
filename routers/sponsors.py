@@ -3,7 +3,6 @@ import traceback
 import psycopg2
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -18,12 +17,6 @@ from database import get_user_language, save_sponsor_draft
 from routers.states import SponsorForm
 
 router = Router()
-
-
-# --- СОСТОЯНИЕ ДЛЯ РЕДАКТИРОВАНИЯ ПОЛЕЙ ---
-class EditSponsorState(StatesGroup):
-  waiting_for_new_value = State()
-
 
 # Словари локализации для анкеты и списков (русский / казахский)
 FORM_TEXTS = {
@@ -184,11 +177,8 @@ async def start_form_text(message: Message, state: FSMContext):
         | F.text.contains("Спонсоры")
     ),
 )
-@router.callback_query(
-    (F.data == "menu_sponsors") | (F.data.startswith("menu_sponsors_"))
-)
-async def sponsors_menu(event: Message | CallbackQuery):
-  user_id = event.from_user.id
+async def sponsors_menu_msg(message: Message):
+  user_id = message.from_user.id
   lang = await get_user_language(user_id)
   if not lang:
     lang = "ru"
@@ -210,28 +200,67 @@ async def sponsors_menu(event: Message | CallbackQuery):
           ],
       ]
   )
-  if isinstance(event, Message):
-    await event.answer(t["choose_list"], reply_markup=keyboard)
-  else:
-    try:
-      await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
-    except Exception:
-      await event.message.answer(t["choose_list"], reply_markup=keyboard)
-    await event.answer()
+  await message.answer(t["choose_list"], reply_markup=keyboard)
 
 
 @router.callback_query(
-    F.data.startswith(("list_brothers_", "list_sisters_"))
+    (F.data == "menu_sponsors") | (F.data.startswith("menu_sponsors_"))
 )
-async def show_list_page(callback: CallbackQuery):
+async def sponsors_menu_cb(callback: CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
+  user_id = callback.from_user.id
+
   parts = callback.data.split("_")
-  if len(parts) < 4:
+  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(user_id)
+    if not lang:
+      lang = "ru"
+
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["btn_brothers"],
+                  callback_data=f"list_brothers_0_{lang}",
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["btn_sisters"], callback_data=f"list_sisters_0_{lang}"
+              )
+          ],
+      ]
+  )
+  try:
+    await callback.message.edit_text(t["choose_list"], reply_markup=keyboard)
+  except Exception:
+    await callback.message.answer(t["choose_list"], reply_markup=keyboard)
+  await callback.answer()
+
+
+@router.callback_query(F.data.startswith("list_"))
+async def show_list_page(callback: CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
+  parts = callback.data.split("_")
+  if len(parts) < 3:
     await callback.answer("Ошибка навигации", show_alert=True)
     return
 
   list_type = parts[1]
   page = int(parts[2])
-  lang = parts[3] if parts[3] in ["ru", "kk"] else "ru"
+
+  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+      lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -240,6 +269,7 @@ async def show_list_page(callback: CallbackQuery):
       if list_type == "brothers"
       else "OR gender ILIKE '%жен%'"
   )
+
   label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
   db_keyword = "брат" if list_type == "brothers" else "сестр"
 
@@ -305,27 +335,26 @@ async def show_list_page(callback: CallbackQuery):
       )
   ])
 
-  try:
-    await callback.message.edit_text(
-        f"📖 ({label}) — {page + 1} / {total_pages}:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-    )
-  except Exception:
-    pass
-  await callback.answer()
+  await callback.message.edit_text(
+      f"📖 ({label}) — {page + 1} / {total_pages}:",
+      reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+  )
 
 
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
-  parts = callback.data.split("_")
-  if len(parts) < 6:
-    await callback.answer("Ошибка запроса", show_alert=True)
+  if callback.message.chat.type != "private":
+    await callback.answer()
     return
-
+  parts = callback.data.split("_")
   user_id = parts[2]
   list_type = parts[3]
   page = parts[4]
-  lang = parts[5] if parts[5] in ["ru", "kk"] else "ru"
+  lang = parts[5] if len(parts) > 5 and parts[5] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+      lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -374,199 +403,14 @@ async def show_details(callback: CallbackQuery):
         ]
     ]
 
-    current_user_id = callback.from_user.id
-    if current_user_id == int(user_id) or current_user_id in ADMINS:
-      edit_text = (
-          t.get("btn_edit", "✏️ Редактировать анкету")
-          if lang == "ru"
-          else "✏️ Сауалнаманы өңдеу"
-      )
-      keyboard.insert(
-          0,
-          [
-              InlineKeyboardButton(
-                  text=edit_text,
-                  callback_data=(
-                      f"edit_menu_{user_id}_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-      )
-
-    try:
-      await callback.message.edit_text(
-          text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
-      )
-    except Exception:
-      pass
+    await callback.message.edit_text(
+        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
   else:
     await callback.answer(t["not_found"], show_alert=True)
-  await callback.answer()
 
 
-@router.callback_query(F.data.startswith("edit_menu_"))
-async def edit_menu(callback: CallbackQuery):
-  parts = callback.data.split("_")
-  if len(parts) < 6:
-    await callback.answer("Ошибка", show_alert=True)
-    return
-
-  user_id = parts[2]
-  list_type = parts[3]
-  page = parts[4]
-  lang = parts[5] if parts[5] in ["ru", "kk"] else "ru"
-
-  if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-    await callback.answer(
-        "⚠️ Вы можете редактировать только свою анкету!", show_alert=True
-    )
-    return
-
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text="📅 Возраст",
-                  callback_data=(
-                      f"edit_field_{user_id}_age_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="🕊 Срок трезвости",
-                  callback_data=(
-                      f"edit_field_{user_id}_sobriety_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="📍 Город",
-                  callback_data=(
-                      f"edit_field_{user_id}_city_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="📞 Телефон",
-                  callback_data=(
-                      f"edit_field_{user_id}_phone_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="📖 Опыт / Программа",
-                  callback_data=(
-                      f"edit_field_{user_id}_programinfo_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="⬅️ Назад",
-                  callback_data=f"view_sp_{user_id}_{list_type}_{page}_{lang}",
-              )
-          ],
-      ]
-  )
-  try:
-    await callback.message.edit_text(
-        "⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard
-    )
-  except Exception:
-    pass
-  await callback.answer()
-
-
-@router.callback_query(F.data.startswith("edit_field_"))
-async def start_editing_field(callback: CallbackQuery, state: FSMContext):
-  parts = callback.data.split("_")
-  if len(parts) < 7:
-    await callback.answer("Ошибка", show_alert=True)
-    return
-
-  user_id = parts[2]
-  field_name = parts[3]
-  list_type = parts[4]
-  page = parts[5]
-  lang = parts[6] if parts[6] in ["ru", "kk"] else "ru"
-
-  if field_name == "programinfo":
-    field_name = "program_info"
-
-  if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-    await callback.answer("⚠️ Доступ запрещен!", show_alert=True)
-    return
-
-  await state.update_data(
-      target_user_id=user_id,
-      field_name=field_name,
-      list_type=list_type,
-      page=page,
-      lang=lang,
-  )
-  await state.set_state(EditSponsorState.waiting_for_new_value)
-
-  field_titles = {
-      "age": "новый возраст (цифрой от 18 до 100)",
-      "sobriety": "новый срок трезвости",
-      "city": "новый город",
-      "phone": "новый номер телефона",
-      "program_info": "новую информацию об опыте",
-  }
-
-  await callback.message.answer(
-      f"✍️ Напишите {field_titles.get(field_name, 'новое значение')} в чат:"
-  )
-  await callback.answer()
-
-
-@router.message(EditSponsorState.waiting_for_new_value)
-async def save_edited_field(message: Message, state: FSMContext):
-  new_value = message.text.strip()
-  data = await state.get_data()
-  target_user_id = data.get("target_user_id")
-  field_name = data.get("field_name")
-  lang = data.get("lang", "ru")
-
-  allowed_fields = ["age", "sobriety", "city", "phone", "program_info"]
-  if field_name not in allowed_fields:
-    await message.answer("Ошибка поля.")
-    await state.clear()
-    return
-
-  if field_name == "age":
-    if not new_value.isdigit() or not (18 <= int(new_value) <= 100):
-      await message.answer(
-          "⚠️ Возраст должен состоять только из цифр (от 18 до 100). Попробуйте"
-          " еще раз:"
-      )
-      return
-
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    query = f"UPDATE sponsors SET {field_name} = %s WHERE user_id = %s;"
-    cur.execute(query, (new_value, target_user_id))
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    await message.answer(
-        "✅ Данные успешно обновлены!",
-        reply_markup=get_fallback_menu_keyboard(lang),
-    )
-    await state.clear()
-  except Exception as e:
-    print(f"Ошибка при обновлении: {e}")
-    await message.answer("❌ Произошла ошибка при сохранении.")
-    await state.clear()
-
-
-# --- ЗАПОЛНЕНИЕ НОВОЙ АНКЕТЫ ---
+# --- ЗАПОЛНЕНИЕ АНКЕТЫ С СОХРАНЕНИЕМ ЯЗЫКА ---
 @router.callback_query(F.data.startswith("start_sponsor_registration"))
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
   if callback.message.chat.type != "private":
