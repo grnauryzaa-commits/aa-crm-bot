@@ -582,6 +582,11 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
 # --- МОДЕРАЦИЯ АДМИНИСТРАТОРОМ ---
 @router.callback_query(F.data.startswith("approve_sp_"))
 async def approve_sponsor(callback: CallbackQuery, bot: Bot):
+  admin_id = callback.from_user.id
+  if admin_id not in ADMINS:
+    await callback.answer("⚠️ У вас нет прав администратора.", show_alert=True)
+    return
+
   target_user_id = int(callback.data.split("_")[2])
   lang = await get_user_language(target_user_id)
   if not lang:
@@ -631,5 +636,43 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
       pass
 
   except Exception as e:
-    print(f"Ошибка в approve: {e}")
-    await callback.answer
+    print(f"Ошибка в approve_sponsor: {e}")
+    await callback.answer("Ошибка при одобрении анкеты.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("decline_sp_"))
+async def decline_sponsor(callback: CallbackQuery, bot: Bot):
+  admin_id = callback.from_user.id
+  if admin_id not in ADMINS:
+    await callback.answer("⚠️ У вас нет прав администратора.", show_alert=True)
+    return
+
+  target_user_id = int(callback.data.split("_")[2])
+  lang = await get_user_language(target_user_id)
+  if not lang:
+    lang = "ru"
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    await callback.message.edit_text(
+        f"{callback.message.text}\n\n❌ ОТКЛОНЕНО АДМИНИСТРАТОРОМ", reply_markup=None
+    )
+    await callback.answer(t["declined_alert"])
+
+    try:
+      await bot.send_message(target_user_id, t["user_declined"])
+    except:
+      pass
+
+  except Exception as e:
+    print(f"Ошибка в decline_sponsor: {e}")
+    await callback.answer("Ошибка при отклонении анкеты.", show_alert=True)
