@@ -624,135 +624,48 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
 
   try:
     await save_sponsor_draft(tg_id, sponsor_data)
+    await message.answer(
+        t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
+    )
+
+    # Оповещение администраторам
+    for admin_id in ADMINS:
+      try:
+        admin_text = (
+            f"🔔 <b>НОВАЯ АНКЕТА СПОНСОРА (Черновик)</b>\n\n"
+            f"👤 Имя: {html.escape(str(sponsor_data['name']))}\n"
+            f"🚻 Пол: {html.escape(str(sponsor_data['gender']))}\n"
+            f"📅 Возраст: {sponsor_data['age']}\n"
+            f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
+            f"📍 Город: {html.escape(str(sponsor_data['city']))}\n"
+            f"📖 Опыт: {html.escape(str(sponsor_data['program_info']))}\n"
+            f"✈️ Username: @{message.from_user.username or 'нет'}\n"
+            f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
+            f"🆔 ID: {tg_id}"
+        )
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ Одобрить",
+                        callback_data=f"approve_sponsor_{tg_id}",
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ Отклонить",
+                        callback_data=f"decline_sponsor_{tg_id}",
+                    ),
+                ]
+            ]
+        )
+        await bot.send_message(
+            admin_id, admin_text, reply_markup=keyboard, parse_mode="HTML"
+        )
+      except Exception as err:
+        print(f"Failed to notify admin {admin_id}: {err}")
+
   except Exception as e:
-    print(f"Draft save error: {e}")
+    print(f"Error saving sponsor draft: {e}")
+    traceback.print_exc()
+    await message.answer("❌ Произошла ошибка при сохранении анкеты.")
 
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text=t["admin_approve"],
-                  callback_data=f"approve_sp_{tg_id}",
-              ),
-              InlineKeyboardButton(
-                  text=t["admin_decline"],
-                  callback_data=f"decline_sp_{tg_id}",
-              ),
-          ]
-      ]
-  )
-
-  admin_text = (
-      f"🔔 {t['admin_title']}\n"
-      "━━━━━━━━━━━━━━━━━━\n"
-      f"👤 Имя: {html.escape(str(sponsor_data['name']))} ({html.escape(str(sponsor_data['gender']))})\n"
-      f"📅 Возраст: {html.escape(str(sponsor_data['age']))}\n"
-      f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
-      f"📍 Город: {html.escape(str(sponsor_data['city']))}\n\n"
-      f"📖 Опыт/Программа: {html.escape(str(sponsor_data['program_info']))}\n"
-      f"✈️ Telegram: @{html.escape(str(sponsor_data['username']))}\n"
-      f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
-      "━━━━━━━━━━━━━━━━━━"
-  )
-
-  for admin_id in ADMINS:
-    try:
-      await bot.send_message(
-          chat_id=admin_id,
-          text=admin_text,
-          reply_markup=keyboard,
-          parse_mode="HTML",
-      )
-    except Exception as e:
-      print(f"Failed to send to admin {admin_id}: {e}")
-
-  await message.answer(
-      t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
-  )
   await state.clear()
-
-
-@router.callback_query(F.data.startswith("approve_sp_"))
-async def approve_sponsor(callback: CallbackQuery, bot: Bot):
-  if callback.from_user.id not in ADMINS:
-    await callback.answer("⚠️ У вас нет прав администратора.", show_alert=True)
-    return
-
-  target_user_id = int(callback.data.split("_")[2])
-  lang = (await get_user_language(target_user_id)) or "ru"
-  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT name, gender, age, sobriety, city, username, phone,"
-        " program_info FROM sponsor_drafts WHERE user_id = %s;",
-        (target_user_id,),
-    )
-    draft = cur.fetchone()
-
-    if draft:
-      cur.execute(
-          """
-                INSERT INTO sponsors (user_id, name, gender, age, sobriety, city, username, phone, program_info)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (user_id) DO UPDATE SET
-                    name = EXCLUDED.name, gender = EXCLUDED.gender, age = EXCLUDED.age,
-                    sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, username = EXCLUDED.username,
-                    phone = EXCLUDED.phone, program_info = EXCLUDED.program_info;
-            """,
-          (target_user_id, *draft),
-      )
-      cur.execute(
-          "DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,)
-      )
-      conn.commit()
-
-    cur.close()
-    conn.close()
-
-    await callback.message.edit_text(
-        f"{callback.message.text}\n\n✅ ОДОБРЕНО АДМИНИСТРАТОРОМ", reply_markup=None
-    )
-    await callback.answer(t["approved_alert"])
-    try:
-      await bot.send_message(target_user_id, t["user_approved"])
-    except:
-      pass
-  except Exception as e:
-    print(f"Approve error: {e}")
-    await callback.answer("Ошибка при одобрении анкеты.", show_alert=True)
-
-
-@router.callback_query(F.data.startswith("decline_sp_"))
-async def decline_sponsor(callback: CallbackQuery, bot: Bot):
-  if callback.from_user.id not in ADMINS:
-    await callback.answer("⚠️ У вас нет прав администратора.", show_alert=True)
-    return
-
-  target_user_id = int(callback.data.split("_")[2])
-  lang = (await get_user_language(target_user_id)) or "ru"
-  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute(
-        "DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    await callback.message.edit_text(
-        f"{callback.message.text}\n\n❌ ОТКЛОНЕНО АДМИНИСТРАТОРОМ", reply_markup=None
-    )
-    await callback.answer(t["declined_alert"])
-    try:
-      await bot.send_message(target_user_id, t["user_declined"])
-    except:
-      pass
-  except Exception as e:
-    print(f"Decline error: {e}")
-    await callback.answer("Ошибка при отклонении анкеты.", show_alert=True)
