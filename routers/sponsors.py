@@ -3,7 +3,6 @@ import traceback
 import psycopg2
 from aiogram import Bot, F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -19,25 +18,25 @@ from routers.states import SponsorForm
 
 router = Router()
 
-
-class EditSponsorState(StatesGroup):
-  waiting_for_new_value = State()
-
-
+# Словари локализации для анкеты и списков (русский / казахский)
 FORM_TEXTS = {
     "ru": {
         "btn_become": "➕ Стать спонсором",
         "menu_title": (
             "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который"
-            " прошел Шаги и готов делиться опытом с другими."
+            " прошел Шаги и готов делиться опытом с другими. Если вы"
+            " чувствуете в себе силы и имеете устойчивую трезвость, вы можете"
+            " зарегистрироваться как спонсор."
         ),
         "btn_fill": "📝 Заполнить анкету спонсора",
         "ask_name": "👤 Напиши свое имя:",
         "ask_gender": "Какой твой пол? (Брат / Сестра)",
         "ask_age": "📅 Напиши свой возраст (цифрой):",
-        "ask_sobriety": "🕊 Какой у тебя срок трезвости?",
+        "ask_sobriety": "🕊 Какой у тебя срок трезвости? (например: 3 года 2 месяца)",
         "ask_city": "📍 Из какого ты города?",
-        "ask_program": "📖 Напиши коротко о своем опыте:",
+        "ask_program": (
+            "📖 Напиши коротко о своем опыте по программе / спонсорстве:"
+        ),
         "ask_phone": "📞 Напиши свой номер телефона для связи:",
         "success_draft": (
             "✅ Твоя анкета успешно отправлена на модерацию администратору!"
@@ -48,13 +47,16 @@ FORM_TEXTS = {
         "approved_alert": "Анкета одобрена!",
         "declined_alert": "Анкета отклонена.",
         "user_approved": "🎉 Поздравляем! Ваша анкета спонсора одобрена.",
-        "user_declined": "❌ К сожалению, ваша анкета отклонена.",
+        "user_declined": (
+            "❌ К сожалению, ваша анкета спонсора была отклонена."
+        ),
         "fallback_become": "➕ Стать спонсором",
         "fallback_list": "📋 Список спонсоров",
         "fallback_main": "🏠 Главное меню",
         "choose_list": "👥 Выберите список:",
         "empty_list": "Список {label} пока пуст.",
         "not_found": "⚠️ Спонсор не найден в базе данных.",
+        "access_denied": "⚠️ Вы можете редактировать только свою анкету!",
         "btn_brothers": "👦 Братья",
         "btn_sisters": "👧 Сестры",
         "btn_back": "⬅️ Назад",
@@ -67,36 +69,49 @@ FORM_TEXTS = {
     "kk": {
         "btn_become": "➕ Демеуші болу",
         "menu_title": (
-            "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — тәжірибе бөлісуге дайын"
-            " адам."
+            "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және"
+            " басқалармен тәжірибе бөлісуге дайын адам. Егер сіз өзіңізде күш"
+            " сезінсеңіз және тұрақты тазалық мерзіміңіз болса, демеуші ретінде"
+            " тіркеле аласыз."
         ),
         "btn_fill": "📝 Демеуші сауалнамасын толтыру",
         "ask_name": "👤 Атыңызды жазыңыз:",
         "ask_gender": "Жынысыңыз қандай? (Бауыр / Әпке)",
         "ask_age": "📅 Жасыңызды жазыңыз (санмен):",
-        "ask_sobriety": "🕊 Тазалық мерзіміңіз қандай?",
+        "ask_sobriety": (
+            "🕊 Тазалық мерзіміңіз қандай? (мысалы: 3 жыл 2 ай)"
+        ),
         "ask_city": "📍 Қай қаладансыз?",
-        "ask_program": "📖 Тәжірибеңіз туралы қысқаша жазыңыз:",
-        "ask_phone": "📞 Телефон нөміріңізді жазыңыз:",
-        "success_draft": "✅ Сауалнамаңыз әкімшіге жіберілді!",
+        "ask_program": (
+            "📖 Бағдарлама/демеушілік тәжірибеңіз туралы қысқаша жазыңыз:"
+        ),
+        "ask_phone": "📞 Байланыс үшін телефон нөміріңізді жазыңыз:",
+        "success_draft": (
+            "✅ Сіздің сауалнамаңыз әкімшіге модерацияға сәтті жіберілді!"
+        ),
         "admin_title": "🔔 ДЕМЕУШІНІ ТІРКЕУ ӨТІНІШІ",
-        "admin_approve": "✅ Мақұлдау",
+        "admin_approve": "✅ Карточканы мақұлдау",
         "admin_decline": "❌ Бас тарту",
-        "approved_alert": "Мақұлданды!",
-        "declined_alert": "Қабылданбады.",
-        "user_approved": "🎉 Құттықтаймыз! Сауалнамаңыз мақұлданды.",
-        "user_declined": "❌ Өкінішке орай, сауалнамаңыз қабылданбады.",
+        "approved_alert": "Сауалнама мақұлданды!",
+        "declined_alert": "Сауалнама қабылданбады.",
+        "user_declined": (
+            "❌ Өкінішке орай, сіздің демеуші сауалнамаңыз қабылданбады."
+        ),
+        "user_approved": (
+            "🎉 Құттықтаймыз! Сіздің демеуші сауалнамаңыз мақұлданды."
+        ),
         "fallback_become": "➕ Демеуші болу",
-        "fallback_list": "📋 Тізім",
+        "fallback_list": "📋 Демеушілер тізімі",
         "fallback_main": "🏠 Басты мәзір",
         "choose_list": "👥 Тізімді таңдаңыз:",
-        "empty_list": "{label} тізімі бос.",
-        "not_found": "⚠️ Деректер базасынан табылмады.",
+        "empty_list": "{label} тізімі әзірге бос.",
+        "not_found": "⚠️ Демеуші деректер базасынан табылмады.",
+        "access_denied": "⚠️ Сіз тек өз сауалнамаңызды өңдей аласыз!",
         "btn_brothers": "👦 Бауырлар",
         "btn_sisters": "👧 Әпкелер",
         "btn_back": "⬅️ Артқа",
         "btn_forward": "Алға ➡️",
-        "btn_edit": "✏️ Өңдеу",
+        "btn_edit": "✏️ Сауалнаманы өңдеу",
         "label_brothers": "Бауырлар",
         "label_sisters": "Әпкелер",
         "default_city": "Қала көрсетілмеген",
@@ -118,6 +133,7 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
   )
 
 
+# --- ПЕРЕХВАТ КНОПКИ СТАТЬ СПОНСОРОМ ---
 @router.message(
     F.chat.type == "private",
     (
@@ -128,8 +144,12 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
 )
 async def start_form_text(message: Message, state: FSMContext):
   try:
-    lang = (await get_user_language(message.from_user.id)) or "ru"
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+      lang = "ru"
+
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -144,9 +164,11 @@ async def start_form_text(message: Message, state: FSMContext):
         t["menu_title"], reply_markup=keyboard, parse_mode="HTML"
     )
   except Exception as e:
-    print(f"Error in start_form_text: {e}")
+    print(f"Ошибка в start_form_text: {e}")
+    traceback.print_exc()
 
 
+# --- МЕНЮ СПОНСОРОВ (СПИСКИ БРАТЬЕВ И СЕСТЕР) ---
 @router.message(
     F.chat.type == "private",
     (
@@ -155,23 +177,11 @@ async def start_form_text(message: Message, state: FSMContext):
         | F.text.contains("Спонсоры")
     ),
 )
-@router.callback_query(
-    (F.data == "menu_sponsors") | (F.data.startswith("menu_sponsors_"))
-)
-async def sponsors_menu(event: Message | CallbackQuery):
-  user_id = event.from_user.id
-
-  if isinstance(event, Message):
-    if "Демеушілер" in event.text:
-      lang = "kk"
-    else:
-      lang = (await get_user_language(user_id)) or "ru"
-  else:
-    parts = event.data.split("_")
-    if len(parts) >= 3 and parts[-1] in ["ru", "kk"]:
-      lang = parts[-1]
-    else:
-      lang = (await get_user_language(user_id)) or "ru"
+async def sponsors_menu_msg(message: Message):
+  user_id = message.from_user.id
+  lang = await get_user_language(user_id)
+  if not lang:
+    lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -190,45 +200,72 @@ async def sponsors_menu(event: Message | CallbackQuery):
           ],
       ]
   )
-  if isinstance(event, Message):
-    await event.answer(t["choose_list"], reply_markup=keyboard)
-  else:
-    try:
-      await event.message.edit_text(t["choose_list"], reply_markup=keyboard)
-    except Exception:
-      await event.message.answer(t["choose_list"], reply_markup=keyboard)
-    await event.answer()
+  await message.answer(t["choose_list"], reply_markup=keyboard)
 
 
 @router.callback_query(
-    F.data.startswith(("list_brothers_", "list_sisters_", "list_"))
+    (F.data == "menu_sponsors") | (F.data.startswith("menu_sponsors_"))
 )
-async def show_list_page(callback: CallbackQuery):
-  parts = callback.data.split("_")
-  try:
-    if len(parts) >= 4 and parts[1] in ["brothers", "sisters"]:
-      list_type = parts[1]
-      page = int(parts[2])
-      lang = parts[3] if parts[3] in ["ru", "kk"] else "ru"
-    elif len(parts) >= 3 and parts[0] == "list":
-      list_type = parts[1]
-      page = int(parts[2])
-      lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
-    else:
-      list_type = "brothers" if "brothers" in callback.data else "sisters"
-      page = 0
-      lang = "ru"
-  except (ValueError, IndexError):
-    page = 0
-    list_type = "brothers"
-    lang = "ru"
+async def sponsors_menu_cb(callback: CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
+  user_id = callback.from_user.id
 
-  if not lang or lang not in ["ru", "kk"]:
-    lang = (await get_user_language(callback.from_user.id)) or "ru"
+  parts = callback.data.split("_")
+  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(user_id)
+    if not lang:
+      lang = "ru"
+
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["btn_brothers"],
+                  callback_data=f"list_brothers_0_{lang}",
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["btn_sisters"], callback_data=f"list_sisters_0_{lang}"
+              )
+          ],
+      ]
+  )
+  try:
+    await callback.message.edit_text(t["choose_list"], reply_markup=keyboard)
+  except Exception:
+    await callback.message.answer(t["choose_list"], reply_markup=keyboard)
+  await callback.answer()
+
+
+@router.callback_query(F.data.startswith("list_"))
+async def show_list_page(callback: CallbackQuery):
+  if callback.message.chat.type != "private":
+    await callback.answer()
+    return
+  parts = callback.data.split("_")
+  if len(parts) < 3:
+    await callback.answer("Ошибка навигации", show_alert=True)
+    return
+
+  list_type = parts[1]
+  page = int(parts[2])
+
+  lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+      lang = "ru"
 
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
   label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
 
+  # Исправленный фильтр: учитывает русские и казахские варианты пола в БД
   if list_type == "brothers":
     db_query_filter = (
         "gender ILIKE '%брат%' OR gender ILIKE '%муж%' OR gender ILIKE"
@@ -251,7 +288,7 @@ async def show_list_page(callback: CallbackQuery):
     cur.close()
     conn.close()
   except Exception as e:
-    print(f"DB Error: {e}")
+    print(f"Ошибка БД в show_list_page: {e}")
     all_sponsors = []
 
   if not all_sponsors:
@@ -274,9 +311,10 @@ async def show_list_page(callback: CallbackQuery):
   keyboard = []
   for uid, name, age, city, sobriety in current_sponsors:
     city_name = city if city else t["default_city"]
+    button_text = f"{name}, {age} | {city_name} | {sobriety}"
     keyboard.append([
         InlineKeyboardButton(
-            text=f"{name}, {age} | {city_name} | {sobriety}",
+            text=button_text,
             callback_data=f"view_sp_{uid}_{list_type}_{page}_{lang}",
         )
     ])
@@ -299,30 +337,34 @@ async def show_list_page(callback: CallbackQuery):
 
   if nav_buttons:
     keyboard.append(nav_buttons)
+
   keyboard.append([
       InlineKeyboardButton(
           text=t["btn_back"], callback_data=f"menu_sponsors_{lang}"
       )
   ])
 
-  try:
-    await callback.message.edit_text(
-        f"📖 ({label}) — {page + 1} / {total_pages}:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
-    )
-  except Exception:
-    pass
-  await callback.answer()
+  await callback.message.edit_text(
+      f"📖 ({label}) — {page + 1} / {total_pages}:",
+      reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard),
+  )
 
 
 @router.callback_query(F.data.startswith("view_sp_"))
 async def show_details(callback: CallbackQuery):
-  parts = callback.data.split("_")
-  if len(parts) < 6:
-    await callback.answer("Ошибка", show_alert=True)
+  if callback.message.chat.type != "private":
+    await callback.answer()
     return
+  parts = callback.data.split("_")
+  user_id = parts[2]
+  list_type = parts[3]
+  page = parts[4]
+  lang = parts[5] if len(parts) > 5 and parts[5] in ["ru", "kk"] else None
+  if not lang:
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+      lang = "ru"
 
-  user_id, list_type, page, lang = parts[2], parts[3], parts[4], parts[5]
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
   try:
@@ -337,7 +379,7 @@ async def show_details(callback: CallbackQuery):
     cur.close()
     conn.close()
   except Exception as e:
-    print(f"DB Error: {e}")
+    print(f"Ошибка БД в show_details: {e}")
     sp = None
 
   if sp:
@@ -348,11 +390,18 @@ async def show_details(callback: CallbackQuery):
         else f"ID: {user_id}"
     )
 
-    text = (
-        f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость:"
-        f" {sobriety}\n📍 Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
-        f" {tg_contact}\n📞 Телефон: {phone}"
-    )
+    if lang == "kk":
+      text = (
+          f"👤 Демеуші: {name} ({gender}), {age}\n🕊 Тазалық мерзімі: {sobriety}\n📍"
+          f" Қала: {city}\n📖 Тәжірибе: {program_info}\n✈️ Telegram:"
+          f" {tg_contact}\n📞 Телефон: {phone}"
+      )
+    else:
+      text = (
+          f"👤 Спонсор: {name} ({gender}), {age}\n🕊 Трезвость: {sobriety}\n📍"
+          f" Город: {city}\n📖 Опыт: {program_info}\n✈️ Telegram:"
+          f" {tg_contact}\n📞 Телефон: {phone}"
+      )
 
     keyboard = [
         [
@@ -363,170 +412,14 @@ async def show_details(callback: CallbackQuery):
         ]
     ]
 
-    if callback.from_user.id == int(user_id) or callback.from_user.id in ADMINS:
-      keyboard.insert(
-          0,
-          [
-              InlineKeyboardButton(
-                  text=t["btn_edit"],
-                  callback_data=(
-                      f"edit_menu_{user_id}_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-      )
-
-    try:
-      await callback.message.edit_text(
-          text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
-      )
-    except Exception:
-      pass
+    await callback.message.edit_text(
+        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard)
+    )
   else:
     await callback.answer(t["not_found"], show_alert=True)
-  await callback.answer()
 
 
-@router.callback_query(F.data.startswith("edit_menu_"))
-async def edit_menu(callback: CallbackQuery):
-  parts = callback.data.split("_")
-  if len(parts) < 6:
-    return
-  user_id, list_type, page, lang = parts[2], parts[3], parts[4], parts[5]
-
-  if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-    await callback.answer(
-        "⚠️ Вы можете редактировать только свою анкету!", show_alert=True
-    )
-    return
-
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text="📅 Возраст",
-                  callback_data=(
-                      f"edit_field_{user_id}_age_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="🕊 Срок трезвости",
-                  callback_data=(
-                      f"edit_field_{user_id}_sobriety_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="📍 Город",
-                  callback_data=(
-                      f"edit_field_{user_id}_city_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="📞 Телефон",
-                  callback_data=(
-                      f"edit_field_{user_id}_phone_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="📖 Опыт / Программа",
-                  callback_data=(
-                      f"edit_field_{user_id}_programinfo_{list_type}_{page}_{lang}"
-                  ),
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="⬅️ Назад",
-                  callback_data=f"view_sp_{user_id}_{list_type}_{page}_{lang}",
-              )
-          ],
-      ]
-  )
-  try:
-    await callback.message.edit_text(
-        "⚙️ Выберите, какое поле вы хотите изменить:", reply_markup=keyboard
-    )
-  except Exception:
-    pass
-  await callback.answer()
-
-
-@router.callback_query(F.data.startswith("edit_field_"))
-async def start_editing_field(callback: CallbackQuery, state: FSMContext):
-  parts = callback.data.split("_")
-  if len(parts) < 7:
-    return
-  user_id, field_name, list_type, page, lang = (
-      parts[2],
-      parts[3],
-      parts[4],
-      parts[5],
-      parts[6],
-  )
-  if field_name == "programinfo":
-    field_name = "program_info"
-
-  if callback.from_user.id != int(user_id) and callback.from_user.id not in ADMINS:
-    await callback.answer("⚠️ Доступ запрещен!", show_alert=True)
-    return
-
-  await state.update_data(
-      target_user_id=user_id,
-      field_name=field_name,
-      list_type=list_type,
-      page=page,
-      lang=lang,
-  )
-  await state.set_state(EditSponsorState.waiting_for_new_value)
-
-  await callback.message.answer("✍️ Напишите новое значение в чат:")
-  await callback.answer()
-
-
-@router.message(EditSponsorState.waiting_for_new_value)
-async def save_edited_field(message: Message, state: FSMContext):
-  new_value = message.text.strip()
-  data = await state.get_data()
-  target_user_id = data.get("target_user_id")
-  field_name = data.get("field_name")
-  lang = data.get("lang", "ru")
-
-  if field_name == "age" and (
-      not new_value.isdigit() or not (18 <= int(new_value) <= 100)
-  ):
-    await message.answer("⚠️ Возраст должен быть от 18 до 100. Повторите:")
-    return
-
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    cur.execute(
-        f"UPDATE sponsors SET {field_name} = %s WHERE user_id = %s;",
-        (new_value, target_user_id),
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    await message.answer(
-        "✅ Данные успешно обновлены!",
-        reply_markup=get_fallback_menu_keyboard(lang),
-    )
-    await state.clear()
-  except Exception as e:
-    print(f"Save error: {e}")
-    await message.answer("❌ Ошибка при сохранении.")
-    await state.clear()
-
-
+# --- ЗАПОЛНЕНИЕ АНКЕТЫ С СОХРАНЕНИЕМ ЯЗЫКА ---
 @router.callback_query(F.data.startswith("start_sponsor_registration"))
 async def start_form_callback(callback: CallbackQuery, state: FSMContext):
   if callback.message.chat.type != "private":
@@ -534,11 +427,13 @@ async def start_form_callback(callback: CallbackQuery, state: FSMContext):
     return
   try:
     parts = callback.data.split("_")
-    lang = (
-        parts[3]
-        if len(parts) > 3 and parts[3] in ["ru", "kk"]
-        else (await get_user_language(callback.from_user.id) or "ru")
-    )
+    lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else None
+
+    if not lang:
+      lang = await get_user_language(callback.from_user.id)
+      if not lang:
+        lang = "ru"
+
     await state.update_data(lang=lang)
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -548,14 +443,20 @@ async def start_form_callback(callback: CallbackQuery, state: FSMContext):
     await state.set_state(SponsorForm.name)
     await callback.answer()
   except Exception as e:
-    print(f"Error in start_form_callback: {e}")
+    print(f"CRITICAL ERROR в start_form_callback: {e}")
     traceback.print_exc()
+    try:
+      await callback.answer("Ошибка при запуске анкеты.", show_alert=True)
+    except:
+      pass
 
 
 @router.message(F.chat.type == "private", SponsorForm.name)
 async def process_name(message: Message, state: FSMContext):
   data = await state.get_data()
-  t = FORM_TEXTS.get(data.get("lang", "ru"), FORM_TEXTS["ru"])
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
   await state.update_data(name=message.text)
   await message.answer(t["ask_gender"])
   await state.set_state(SponsorForm.gender)
@@ -564,7 +465,9 @@ async def process_name(message: Message, state: FSMContext):
 @router.message(F.chat.type == "private", SponsorForm.gender)
 async def process_gender(message: Message, state: FSMContext):
   data = await state.get_data()
-  t = FORM_TEXTS.get(data.get("lang", "ru"), FORM_TEXTS["ru"])
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
   await state.update_data(gender=message.text)
   await message.answer(t["ask_age"])
   await state.set_state(SponsorForm.age)
@@ -573,7 +476,9 @@ async def process_gender(message: Message, state: FSMContext):
 @router.message(F.chat.type == "private", SponsorForm.age)
 async def process_age(message: Message, state: FSMContext):
   data = await state.get_data()
-  t = FORM_TEXTS.get(data.get("lang", "ru"), FORM_TEXTS["ru"])
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
   await state.update_data(age=message.text)
   await message.answer(t["ask_sobriety"])
   await state.set_state(SponsorForm.sobriety)
@@ -582,7 +487,9 @@ async def process_age(message: Message, state: FSMContext):
 @router.message(F.chat.type == "private", SponsorForm.sobriety)
 async def process_sobriety(message: Message, state: FSMContext):
   data = await state.get_data()
-  t = FORM_TEXTS.get(data.get("lang", "ru"), FORM_TEXTS["ru"])
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
   await state.update_data(sobriety=message.text)
   await message.answer(t["ask_city"])
   await state.set_state(SponsorForm.city)
@@ -591,7 +498,9 @@ async def process_sobriety(message: Message, state: FSMContext):
 @router.message(F.chat.type == "private", SponsorForm.city)
 async def process_city(message: Message, state: FSMContext):
   data = await state.get_data()
-  t = FORM_TEXTS.get(data.get("lang", "ru"), FORM_TEXTS["ru"])
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
   await state.update_data(city=message.text)
   await message.answer(t["ask_program"])
   await state.set_state(SponsorForm.program_info)
@@ -600,7 +509,9 @@ async def process_city(message: Message, state: FSMContext):
 @router.message(F.chat.type == "private", SponsorForm.program_info)
 async def process_program_info(message: Message, state: FSMContext):
   data = await state.get_data()
-  t = FORM_TEXTS.get(data.get("lang", "ru"), FORM_TEXTS["ru"])
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
   await state.update_data(program_info=message.text)
   await message.answer(t["ask_phone"])
   await state.set_state(SponsorForm.phone)
@@ -629,48 +540,105 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
 
   try:
     await save_sponsor_draft(tg_id, sponsor_data)
-    await message.answer(
-        t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
-    )
+  except Exception as e:
+    print(f"Ошибка сохранения черновика в БД: {e}")
 
-    # Оповещение администраторам
-    for admin_id in ADMINS:
-      try:
-        admin_text = (
-            f"🔔 <b>НОВАЯ АНКЕТА СПОНСОРА (Черновик)</b>\n\n"
-            f"👤 Имя: {html.escape(str(sponsor_data['name']))}\n"
-            f"🚻 Пол: {html.escape(str(sponsor_data['gender']))}\n"
-            f"📅 Возраст: {sponsor_data['age']}\n"
-            f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
-            f"📍 Город: {html.escape(str(sponsor_data['city']))}\n"
-            f"📖 Опыт: {html.escape(str(sponsor_data['program_info']))}\n"
-            f"✈️ Username: @{message.from_user.username or 'нет'}\n"
-            f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
-            f"🆔 ID: {tg_id}"
-        )
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✅ Одобрить",
-                        callback_data=f"approve_sponsor_{tg_id}",
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ Отклонить",
-                        callback_data=f"decline_sponsor_{tg_id}",
-                    ),
-                ]
-            ]
-        )
-        await bot.send_message(
-            admin_id, admin_text, reply_markup=keyboard, parse_mode="HTML"
-        )
-      except Exception as err:
-        print(f"Failed to notify admin {admin_id}: {err}")
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["admin_approve"],
+                  callback_data=f"approve_sp_{tg_id}",
+              ),
+              InlineKeyboardButton(
+                  text=t["admin_decline"],
+                  callback_data=f"decline_sp_{tg_id}",
+              ),
+          ]
+      ]
+  )
+
+  admin_text = (
+      f"🔔 {t['admin_title']}\n"
+      "━━━━━━━━━━━━━━━━━━\n"
+      f"👤 Имя: {html.escape(str(sponsor_data['name']))} ({html.escape(str(sponsor_data['gender']))})\n"
+      f"📅 Возраст: {html.escape(str(sponsor_data['age']))}\n"
+      f"🕊 Трезвость: {html.escape(str(sponsor_data['sobriety']))}\n"
+      f"📍 Город: {html.escape(str(sponsor_data['city']))}\n\n"
+      f"📖 Опыт/Программа: {html.escape(str(sponsor_data['program_info']))}\n"
+      f"✈️ Telegram: @{html.escape(str(sponsor_data['username']))}\n"
+      f"📞 Телефон: {html.escape(str(sponsor_data['phone']))}\n"
+      "━━━━━━━━━━━━━━━━━━"
+  )
+
+  for admin_id in ADMINS:
+    try:
+      await bot.send_message(
+          chat_id=admin_id,
+          text=admin_text,
+          reply_markup=keyboard,
+          parse_mode="HTML",
+      )
+    except Exception as e:
+      print(f"Не удалось отправить админу {admin_id}: {e}")
+
+  await message.answer(
+      t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
+  )
+  await state.clear()
+
+
+# --- МОДЕРАЦИЯ АДМИНИСТРАТОРОМ ---
+@router.callback_query(F.data.startswith("approve_sp_"))
+async def approve_sponsor(callback: CallbackQuery, bot: Bot):
+  target_user_id = int(callback.data.split("_")[2])
+  lang = await get_user_language(target_user_id)
+  if not lang:
+    lang = "ru"
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT name, gender, age, sobriety, city, username, phone,"
+        " program_info FROM sponsor_drafts WHERE user_id = %s;",
+        (target_user_id,),
+    )
+    draft = cur.fetchone()
+
+    if draft:
+      cur.execute(
+          """
+                INSERT INTO sponsors (user_id, name, gender, age, sobriety, city, username, phone, program_info)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id) DO UPDATE SET
+                    name = EXCLUDED.name, gender = EXCLUDED.gender, age = EXCLUDED.age,
+                    sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, username = EXCLUDED.username,
+                    phone = EXCLUDED.phone, program_info = EXCLUDED.program_info;
+            """,
+          (target_user_id, *draft),
+      )
+
+      cur.execute(
+          "DELETE FROM sponsor_drafts WHERE user_id = %s;", (target_user_id,)
+      )
+      conn.commit()
+
+    cur.close()
+    conn.close()
+
+    await callback.message.edit_text(
+        f"{callback.message.text}\n\n✅ ОДОБРЕНО АДМИНИСТРАТОРОМ", reply_markup=None
+    )
+    await callback.answer(t["approved_alert"])
+
+    try:
+      await bot.send_message(target_user_id, t["user_approved"])
+    except:
+      pass
 
   except Exception as e:
-    print(f"Error saving sponsor draft: {e}")
-    traceback.print_exc()
-    await message.answer("❌ Произошла ошибка при сохранении анкеты.")
-
-  await state.clear()
+    print(f"Ошибка в approve: {e}")
+    await callback.answer()
