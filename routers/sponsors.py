@@ -92,6 +92,8 @@ FORM_TEXTS = {
         "edit_ask_program": "📖 Введите новый опыт по программе:",
         "edit_ask_phone": "📞 Введите новый номер телефона:",
         "edit_no_draft": "⚠️ Анкета не найдена. Сначала заполните анкету.",
+        "edit_admin_btn": "✏️ Редактировать (админ)",
+        "edit_done": "✅ Готово",
     },
     "kk": {
         "btn_become": "➕ Демеуші болу",
@@ -146,6 +148,8 @@ FORM_TEXTS = {
         "edit_ask_program": "📖 Бағдарлама бойынша жаңа тәжірибеңізді енгізіңіз:",
         "edit_ask_phone": "📞 Жаңа телефон нөміріңізді енгізіңіз:",
         "edit_no_draft": "⚠️ Сауалнама табылмады. Алдымен сауалнаманы толтырыңыз.",
+        "edit_admin_btn": "✏️ Өңдеу (әкімші)",
+        "edit_done": "✅ Дайын",
     },
 }
 
@@ -161,6 +165,80 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
             [KeyboardButton(text=t["fallback_main"])],
         ],
         resize_keyboard=True,
+    )
+
+
+def _edit_menu_kb(lang: str, owner_id: int = None):
+    """Клавиатура меню редактирования.
+    Если owner_id задан — callback_data будет содержать целевой user_id,
+    чтобы админ мог редактировать чужую анкету."""
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+    suffix = f"_{owner_id}" if owner_id else ""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t["edit_name_btn"],
+                    callback_data=f"edit_field_name_{lang}{suffix}",
+                ),
+                InlineKeyboardButton(
+                    text=t["edit_gender_btn"],
+                    callback_data=f"edit_field_gender_{lang}{suffix}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_age_btn"],
+                    callback_data=f"edit_field_age_{lang}{suffix}",
+                ),
+                InlineKeyboardButton(
+                    text=t["edit_sobriety_btn"],
+                    callback_data=f"edit_field_sobriety_{lang}{suffix}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_city_btn"],
+                    callback_data=f"edit_field_city_{lang}{suffix}",
+                ),
+                InlineKeyboardButton(
+                    text=t["edit_program_btn"],
+                    callback_data=f"edit_field_program_{lang}{suffix}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_phone_btn"],
+                    callback_data=f"edit_field_phone_{lang}{suffix}",
+                )
+            ],
+        ]
+    )
+
+
+def _ensure_draft_row(cur, user_id: int):
+    """Если у пользователя нет черновика, но есть одобренная карточка —
+    копируем её в sponsor_drafts, чтобы можно было редактировать."""
+    cur.execute("SELECT 1 FROM sponsor_drafts WHERE user_id = %s;", (user_id,))
+    if cur.fetchone():
+        return
+
+    cur.execute(
+        "SELECT name, gender, age, sobriety, city, username, phone, program_info"
+        " FROM sponsors WHERE user_id = %s;",
+        (user_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return
+
+    cur.execute(
+        """
+        INSERT INTO sponsor_drafts (user_id, name, gender, age, sobriety, city, username, phone, program_info)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (user_id) DO NOTHING;
+        """,
+        (user_id, *row),
     )
 
 
@@ -626,19 +704,306 @@ async def show_details(callback: CallbackQuery):
         f"📞 <b>Телефон:</b> {phone}"
     )
 
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[[
-            InlineKeyboardButton(
-                text=t["btn_back"],
-                callback_data=f"list_{list_type}_{page}_{lang}",
-            )
-        ]]
+    back_btn = InlineKeyboardButton(
+        text=t["btn_back"],
+        callback_data=f"list_{list_type}_{page}_{lang}",
     )
+    rows = [[back_btn]]
+
+    is_owner = callback.from_user.id == int(user_id)
+    is_admin = callback.from_user.id in ADMINS
+    if is_owner or is_admin:
+        edit_text = (
+            t["edit_admin_btn"] if (is_admin and not is_owner) else t["btn_edit"]
+        )
+        rows.insert(
+            0,
+            [
+                InlineKeyboardButton(
+                    text=edit_text,
+                    callback_data=f"edit_sp_card_{user_id}_{lang}",
+                )
+            ],
+        )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=rows)
 
     await callback.message.edit_text(
         details_text, reply_markup=keyboard, parse_mode="HTML"
     )
     await callback.answer()
+
+
+# --- ОТКРЫТИЕ РЕДАКТИРОВАНИЯ ИЗ КАРТОЧКИ СПОНСОРА (ВЛАДЕЛЕЦ ИЛИ АДМИН) ---
+@router.callback_query(F.data.startswith("edit_sp_card_"))
+async def edit_sp_card(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    # edit_sp_card_<user_id>_<lang>
+    target_user_id = int(parts[3])
+    lang = parts[4] if len(parts) > 4 and parts[4] in ["ru", "kk"] else "ru"
+
+    is_owner = callback.from_user.id == target_user_id
+    is_admin = callback.from_user.id in ADMINS
+    if not (is_owner or is_admin):
+        t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+        await callback.answer(t["access_denied"], show_alert=True)
+        return
+
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+    # Гарантируем, что есть черновик для редактирования
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        _ensure_draft_row(cur, target_user_id)
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Ошибка при подготовке черновика: {e}")
+        traceback.print_exc()
+
+    await state.update_data(lang=lang, target_user_id=target_user_id)
+
+    await callback.message.answer(
+        t["edit_menu_title"],
+        reply_markup=_edit_menu_kb(lang, owner_id=target_user_id),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+# --- МЕНЮ РЕДАКТИРОВАНИЯ АНКЕТЫ (ДЛЯ ВЛАДЕЛЬЦА — БЕЗ target_user_id) ---
+@router.callback_query(F.data.startswith("open_edit_menu_"))
+async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
+    if callback.message.chat.type != "private":
+        await callback.answer()
+        return
+
+    lang = callback.data.split("_")[-1]
+    if lang not in ["ru", "kk"]:
+        lang = "ru"
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+    user_id = callback.from_user.id
+
+    # Если есть только одобренная карточка — копируем её в черновик
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        _ensure_draft_row(cur, user_id)
+        conn.commit()
+        cur.execute(
+            "SELECT 1 FROM sponsor_drafts WHERE user_id = %s;", (user_id,)
+        )
+        has_draft = cur.fetchone()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Ошибка БД в open_edit_menu: {e}")
+        has_draft = None
+
+    if not has_draft:
+        await callback.answer(t["edit_no_draft"], show_alert=True)
+        return
+
+    await state.update_data(lang=lang, target_user_id=user_id)
+
+    await callback.message.answer(
+        t["edit_menu_title"],
+        reply_markup=_edit_menu_kb(lang),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+# --- ЗАПУСК РЕДАКТИРОВАНИЯ КОНКРЕТНОГО ПОЛЯ ---
+@router.callback_query(F.data.startswith("edit_field_"))
+async def start_edit_field(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    # форматы: edit_field_<field>_<lang>  |  edit_field_<field>_<lang>_<owner_id>
+    field = parts[2]
+    lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
+
+    # целевой user_id: если админ редактирует чужую — берём из callback,
+    # иначе из state
+    state_data = await state.get_data()
+    if len(parts) > 4 and parts[4].isdigit():
+        target_user_id = int(parts[4])
+    else:
+        target_user_id = state_data.get("target_user_id") or callback.from_user.id
+
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+    await state.update_data(
+        lang=lang, edit_field=field, target_user_id=target_user_id
+    )
+
+    if field == "name":
+        await callback.message.answer(
+            t["edit_ask_name"], reply_markup=ReplyKeyboardRemove()
+        )
+        await state.set_state(SponsorEditForm.edit_name)
+    elif field == "gender":
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [
+                    KeyboardButton(text="Брат" if lang == "ru" else "Бауыр"),
+                    KeyboardButton(text="Сестра" if lang == "ru" else "Әпке"),
+                ]
+            ],
+            resize_keyboard=True,
+            one_time_keyboard=True,
+        )
+        await callback.message.answer(
+            t["edit_ask_gender"], reply_markup=keyboard
+        )
+        await state.set_state(SponsorEditForm.edit_gender)
+    elif field == "age":
+        await callback.message.answer(
+            t["edit_ask_age"], reply_markup=ReplyKeyboardRemove()
+        )
+        await state.set_state(SponsorEditForm.edit_age)
+    elif field == "sobriety":
+        await callback.message.answer(
+            t["edit_ask_sobriety"], reply_markup=ReplyKeyboardRemove()
+        )
+        await state.set_state(SponsorEditForm.edit_sobriety)
+    elif field == "city":
+        await callback.message.answer(
+            t["edit_ask_city"], reply_markup=ReplyKeyboardRemove()
+        )
+        await state.set_state(SponsorEditForm.edit_city)
+    elif field == "program":
+        await callback.message.answer(
+            t["edit_ask_program"], reply_markup=ReplyKeyboardRemove()
+        )
+        await state.set_state(SponsorEditForm.edit_program_info)
+    elif field == "phone":
+        await callback.message.answer(
+            t["edit_ask_phone"], reply_markup=ReplyKeyboardRemove()
+        )
+        await state.set_state(SponsorEditForm.edit_phone)
+
+    await callback.answer()
+
+
+# --- СОХРАНЕНИЕ ОТРЕДАКТИРОВАННОГО ПОЛЯ ---
+async def _update_draft_field(
+    user_id: int, field: str, value: str, lang: str, message: Message
+):
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+    column_map = {
+        "name": "name",
+        "gender": "gender",
+        "age": "age",
+        "sobriety": "sobriety",
+        "city": "city",
+        "program": "program_info",
+        "phone": "phone",
+    }
+    column = column_map.get(field)
+    if not column:
+        await message.answer("⚠️ Неизвестное поле.")
+        return
+
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+        # Обновляем черновик
+        cur.execute(
+            f"UPDATE sponsor_drafts SET {column} = %s WHERE user_id = %s;",
+            (value, user_id),
+        )
+        # Если есть одобренная карточка — тоже обновляем
+        cur.execute(
+            f"UPDATE sponsors SET {column} = %s WHERE user_id = %s;",
+            (value, user_id),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Ошибка обновления поля {field}: {e}")
+        traceback.print_exc()
+
+    await message.answer(t["field_updated"], reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        t["edit_menu_title"],
+        reply_markup=_edit_menu_kb(lang, owner_id=user_id),
+        parse_mode="HTML",
+    )
+
+
+@router.message(SponsorEditForm.edit_name)
+async def save_edit_name(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    target = data.get("target_user_id") or message.from_user.id
+    await _update_draft_field(
+        target, "name", message.text.strip(), lang, message
+    )
+
+
+@router.message(SponsorEditForm.edit_gender)
+async def save_edit_gender(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    target = data.get("target_user_id") or message.from_user.id
+    await _update_draft_field(
+        target, "gender", message.text.strip(), lang, message
+    )
+
+
+@router.message(SponsorEditForm.edit_age)
+async def save_edit_age(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    target = data.get("target_user_id") or message.from_user.id
+    await _update_draft_field(
+        target, "age", message.text.strip(), lang, message
+    )
+
+
+@router.message(SponsorEditForm.edit_sobriety)
+async def save_edit_sobriety(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    target = data.get("target_user_id") or message.from_user.id
+    await _update_draft_field(
+        target, "sobriety", message.text.strip(), lang, message
+    )
+
+
+@router.message(SponsorEditForm.edit_city)
+async def save_edit_city(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    target = data.get("target_user_id") or message.from_user.id
+    await _update_draft_field(
+        target, "city", message.text.strip(), lang, message
+    )
+
+
+@router.message(SponsorEditForm.edit_program_info)
+async def save_edit_program(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    target = data.get("target_user_id") or message.from_user.id
+    await _update_draft_field(
+        target, "program", message.text.strip(), lang, message
+    )
+
+
+@router.message(SponsorEditForm.edit_phone)
+async def save_edit_phone(message: Message, state: FSMContext):
+    data = await state.get_data()
+    lang = data.get("lang", "ru")
+    target = data.get("target_user_id") or message.from_user.id
+    await _update_draft_field(
+        target, "phone", message.text.strip(), lang, message
+    )
 
 
 # --- АДМИНСКАЯ МОДЕРАЦИЯ (ОДОБРИТЬ / ОТКЛОНИТЬ) ---
@@ -672,7 +1037,9 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
                 """,
                 (user_id, *draft),
             )
-            cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (user_id,))
+            cur.execute(
+                "DELETE FROM sponsor_drafts WHERE user_id = %s;", (user_id,)
+            )
             conn.commit()
 
         cur.close()
@@ -689,7 +1056,9 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
     except Exception as e:
         print(f"Ошибка при одобрении спонсора: {e}")
         traceback.print_exc()
-        await callback.answer("Ошибка при обработке запроса.", show_alert=True)
+        await callback.answer(
+            "Ошибка при обработке запроса.", show_alert=True
+        )
 
 
 @router.callback_query(F.data.startswith("reject_sp_"))
@@ -703,7 +1072,9 @@ async def reject_sponsor(callback: CallbackQuery, bot: Bot):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        cur.execute("DELETE FROM sponsor_drafts WHERE user_id = %s;", (user_id,))
+        cur.execute(
+            "DELETE FROM sponsor_drafts WHERE user_id = %s;", (user_id,)
+        )
         conn.commit()
         cur.close()
         conn.close()
@@ -718,271 +1089,6 @@ async def reject_sponsor(callback: CallbackQuery, bot: Bot):
         await callback.answer("Анкета отклонена.")
     except Exception as e:
         print(f"Ошибка при отклонении спонсора: {e}")
-        await callback.answer("Ошибка при обработке запроса.", show_alert=True)
-
-
-# --- МЕНЮ РЕДАКТИРОВАНИЯ АНКЕТЫ ---
-@router.callback_query(F.data.startswith("open_edit_menu_"))
-async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
-    if callback.message.chat.type != "private":
-        await callback.answer()
-        return
-
-    lang = callback.data.split("_")[-1]
-    if lang not in ["ru", "kk"]:
-        lang = "ru"
-    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT 1 FROM sponsor_drafts WHERE user_id = %s;",
-            (callback.from_user.id,),
+        await callback.answer(
+            "Ошибка при обработке запроса.", show_alert=True
         )
-        has_draft = cur.fetchone()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print(f"Ошибка БД в open_edit_menu: {e}")
-        has_draft = None
-
-    if not has_draft:
-        await callback.answer(t["edit_no_draft"], show_alert=True)
-        return
-
-    await state.update_data(lang=lang)
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=t["edit_name_btn"],
-                    callback_data=f"edit_field_name_{lang}",
-                ),
-                InlineKeyboardButton(
-                    text=t["edit_gender_btn"],
-                    callback_data=f"edit_field_gender_{lang}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_age_btn"],
-                    callback_data=f"edit_field_age_{lang}",
-                ),
-                InlineKeyboardButton(
-                    text=t["edit_sobriety_btn"],
-                    callback_data=f"edit_field_sobriety_{lang}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_city_btn"],
-                    callback_data=f"edit_field_city_{lang}",
-                ),
-                InlineKeyboardButton(
-                    text=t["edit_program_btn"],
-                    callback_data=f"edit_field_program_{lang}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_phone_btn"],
-                    callback_data=f"edit_field_phone_{lang}",
-                )
-            ],
-        ]
-    )
-    await callback.message.answer(
-        t["edit_menu_title"], reply_markup=keyboard, parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-# --- ЗАПУСК РЕДАКТИРОВАНИЯ КОНКРЕТНОГО ПОЛЯ ---
-@router.callback_query(F.data.startswith("edit_field_"))
-async def start_edit_field(callback: CallbackQuery, state: FSMContext):
-    parts = callback.data.split("_")
-    # формат: edit_field_<field>_<lang>
-    field = parts[2]
-    lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
-    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
-    await state.update_data(lang=lang, edit_field=field)
-
-    if field == "name":
-        await callback.message.answer(
-            t["edit_ask_name"], reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(SponsorEditForm.edit_name)
-    elif field == "gender":
-        keyboard = ReplyKeyboardMarkup(
-            keyboard=[
-                [
-                    KeyboardButton(text="Брат" if lang == "ru" else "Бауыр"),
-                    KeyboardButton(text="Сестра" if lang == "ru" else "Әпке"),
-                ]
-            ],
-            resize_keyboard=True,
-            one_time_keyboard=True,
-        )
-        await callback.message.answer(t["edit_ask_gender"], reply_markup=keyboard)
-        await state.set_state(SponsorEditForm.edit_gender)
-    elif field == "age":
-        await callback.message.answer(
-            t["edit_ask_age"], reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(SponsorEditForm.edit_age)
-    elif field == "sobriety":
-        await callback.message.answer(
-            t["edit_ask_sobriety"], reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(SponsorEditForm.edit_sobriety)
-    elif field == "city":
-        await callback.message.answer(
-            t["edit_ask_city"], reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(SponsorEditForm.edit_city)
-    elif field == "program":
-        await callback.message.answer(
-            t["edit_ask_program"], reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(SponsorEditForm.edit_program_info)
-    elif field == "phone":
-        await callback.message.answer(
-            t["edit_ask_phone"], reply_markup=ReplyKeyboardRemove()
-        )
-        await state.set_state(SponsorEditForm.edit_phone)
-
-    await callback.answer()
-
-
-# --- СОХРАНЕНИЕ ОТРЕДАКТИРОВАННОГО ПОЛЯ ---
-async def _update_draft_field(user_id: int, field: str, value: str, lang: str, message: Message):
-    """Обновляет одно поле в sponsor_drafts и возвращает клавиатуру меню редактирования."""
-    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-
-    column_map = {
-        "name": "name",
-        "gender": "gender",
-        "age": "age",
-        "sobriety": "sobriety",
-        "city": "city",
-        "program": "program_info",
-        "phone": "phone",
-    }
-    column = column_map.get(field)
-    if not column:
-        await message.answer("⚠️ Неизвестное поле.")
-        return
-
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
-        cur = conn.cursor()
-        cur.execute(
-            f"UPDATE sponsor_drafts SET {column} = %s WHERE user_id = %s;",
-            (value, user_id),
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e:
-        print(f"Ошибка обновления поля {field}: {e}")
-        traceback.print_exc()
-
-    # Возвращаем меню редактирования
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=t["edit_name_btn"],
-                    callback_data=f"edit_field_name_{lang}",
-                ),
-                InlineKeyboardButton(
-                    text=t["edit_gender_btn"],
-                    callback_data=f"edit_field_gender_{lang}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_age_btn"],
-                    callback_data=f"edit_field_age_{lang}",
-                ),
-                InlineKeyboardButton(
-                    text=t["edit_sobriety_btn"],
-                    callback_data=f"edit_field_sobriety_{lang}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_city_btn"],
-                    callback_data=f"edit_field_city_{lang}",
-                ),
-                InlineKeyboardButton(
-                    text=t["edit_program_btn"],
-                    callback_data=f"edit_field_program_{lang}",
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text=t["edit_phone_btn"],
-                    callback_data=f"edit_field_phone_{lang}",
-                )
-            ],
-        ]
-    )
-    await message.answer(
-        t["field_updated"], reply_markup=ReplyKeyboardRemove()
-    )
-    await message.answer(
-        t["edit_menu_title"], reply_markup=keyboard, parse_mode="HTML"
-    )
-
-
-@router.message(SponsorEditForm.edit_name)
-async def save_edit_name(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await _update_draft_field(message.from_user.id, "name", message.text.strip(), lang, message)
-
-
-@router.message(SponsorEditForm.edit_gender)
-async def save_edit_gender(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await _update_draft_field(message.from_user.id, "gender", message.text.strip(), lang, message)
-
-
-@router.message(SponsorEditForm.edit_age)
-async def save_edit_age(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await _update_draft_field(message.from_user.id, "age", message.text.strip(), lang, message)
-
-
-@router.message(SponsorEditForm.edit_sobriety)
-async def save_edit_sobriety(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await _update_draft_field(message.from_user.id, "sobriety", message.text.strip(), lang, message)
-
-
-@router.message(SponsorEditForm.edit_city)
-async def save_edit_city(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await _update_draft_field(message.from_user.id, "city", message.text.strip(), lang, message)
-
-
-@router.message(SponsorEditForm.edit_program_info)
-async def save_edit_program(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await _update_draft_field(message.from_user.id, "program", message.text.strip(), lang, message)
-
-
-@router.message(SponsorEditForm.edit_phone)
-async def save_edit_phone(message: Message, state: FSMContext):
-    data = await state.get_data()
-    lang = data.get("lang", "ru")
-    await _update_draft_field(message.from_user.id, "phone", message.text.strip(), lang, message)
