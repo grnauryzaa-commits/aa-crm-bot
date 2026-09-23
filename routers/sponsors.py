@@ -18,7 +18,18 @@ from database import get_user_language
 router = Router()
 
 
-# Состояния для точечного редактирования полей
+# Состояния для пошагового заполнения новой анкеты
+class SponsorForm(StatesGroup):
+  name = State()
+  gender = State()
+  age = State()
+  sobriety = State()
+  city = State()
+  program_info = State()
+  phone = State()
+
+
+# Состояния для точечного редактирования существующих полей
 class SponsorEditForm(StatesGroup):
   edit_name = State()
   edit_gender = State()
@@ -221,6 +232,191 @@ async def start_form_text(message: Message, state: FSMContext):
   except Exception as e:
     print(f"Ошибка в start_form_text: {e}")
     traceback.print_exc()
+
+
+# --- ЗАПУСК ПОШАГОВОГО ЗАПОЛНЕНИЯ АНКЕТЫ ---
+@router.callback_query(F.data.startswith("start_sponsor_registration_"))
+async def start_sponsor_registration(callback: CallbackQuery, state: FSMContext):
+  lang = callback.data.split("_")[-1]
+  if lang not in ["ru", "kk"]:
+    lang = "ru"
+
+  await state.update_data(lang=lang)
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await callback.message.answer(
+      t["ask_name"], reply_markup=ReplyKeyboardRemove()
+  )
+  await state.set_state(SponsorForm.name)
+  await callback.answer()
+
+
+@router.message(SponsorForm.name)
+async def process_sponsor_name(message: Message, state: FSMContext):
+  await state.update_data(name=message.text.strip())
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  keyboard = ReplyKeyboardMarkup(
+      keyboard=[
+          [
+              KeyboardButton(
+                  text="Брат" if lang == "ru" else "Бауыр"
+              ),
+              KeyboardButton(
+                  text="Сестра" if lang == "ru" else "Әпке"
+              ),
+          ]
+      ],
+      resize_keyboard=True,
+      one_time_keyboard=True,
+  )
+  await message.answer(t["ask_gender"], reply_markup=keyboard)
+  await state.set_state(SponsorForm.gender)
+
+
+@router.message(SponsorForm.gender)
+async def process_sponsor_gender(message: Message, state: FSMContext):
+  await state.update_data(gender=message.text.strip())
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await message.answer(
+      t["ask_age"], reply_markup=ReplyKeyboardRemove()
+  )
+  await state.set_state(SponsorForm.age)
+
+
+@router.message(SponsorForm.age)
+async def process_sponsor_age(message: Message, state: FSMContext):
+  await state.update_data(age=message.text.strip())
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await message.answer(t["ask_sobriety"], reply_markup=ReplyKeyboardRemove())
+  await state.set_state(SponsorForm.sobriety)
+
+
+@router.message(SponsorForm.sobriety)
+async def process_sponsor_sobriety(message: Message, state: FSMContext):
+  await state.update_data(sobriety=message.text.strip())
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await message.answer(t["ask_city"], reply_markup=ReplyKeyboardRemove())
+  await state.set_state(SponsorForm.city)
+
+
+@router.message(SponsorForm.city)
+async def process_sponsor_city(message: Message, state: FSMContext):
+  await state.update_data(city=message.text.strip())
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await message.answer(t["ask_program"], reply_markup=ReplyKeyboardRemove())
+  await state.set_state(SponsorForm.program_info)
+
+
+@router.message(SponsorForm.program_info)
+async def process_sponsor_program(message: Message, state: FSMContext):
+  await state.update_data(program_info=message.text.strip())
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await message.answer(t["ask_phone"], reply_markup=ReplyKeyboardRemove())
+  await state.set_state(SponsorForm.phone)
+
+
+@router.message(SponsorForm.phone)
+async def process_sponsor_phone(message: Message, state: FSMContext, bot: Bot):
+  await state.update_data(phone=message.text.strip())
+  data = await state.get_data()
+  user_id = message.from_user.id
+  lang = data.get("lang", "ru")
+  t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+  username = message.from_user.username or "нет"
+
+  name = data.get("name", "Не указано")
+  gender = data.get("gender", "Не указано")
+  age = str(data.get("age", "0"))
+  sobriety = data.get("sobriety", "Не указано")
+  city = data.get("city", "Не указано")
+  program_info = data.get("program_info", "Не указано")
+  phone = data.get("phone", message.text.strip())
+
+  try:
+    conn = psycopg2.connect(DATABASE_URL)
+    cur = conn.cursor()
+    cur.execute(
+        """
+            INSERT INTO sponsor_drafts (user_id, name, gender, age, sobriety, city, username, phone, program_info)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET
+                name = EXCLUDED.name, 
+                gender = EXCLUDED.gender, 
+                age = EXCLUDED.age,
+                sobriety = EXCLUDED.sobriety, 
+                city = EXCLUDED.city, 
+                username = EXCLUDED.username,
+                phone = EXCLUDED.phone, 
+                program_info = EXCLUDED.program_info;
+        """,
+        (
+            user_id,
+            name,
+            gender,
+            age,
+            sobriety,
+            city,
+            username,
+            phone,
+            program_info,
+        ),
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+  except Exception as e:
+    print(f"Ошибка сохранения анкеты в БД: {e}")
+    traceback.print_exc()
+
+  await message.answer(
+      t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
+  )
+  await state.clear()
+
+  for admin_id in ADMINS:
+    try:
+      admin_text = (
+          f"🔔 <b>ЗАЯВКА НА РЕГИСТРАЦИЮ СПОНСОРА</b>\n\n"
+          f"👤 Имя: {name}\n"
+          f"🚻 Пол: {gender}\n"
+          f"📅 Возраст: {age}\n"
+          f"🕊 Трезвость: {sobriety}\n"
+          f"📍 Город: {city}\n\n"
+          f"📖 Опыт: {program_info}\n"
+          f"✈️ Telegram: @{username if username != 'нет' else 'нет'}\n"
+          f"📞 Телефон: {phone}"
+      )
+      kb = InlineKeyboardMarkup(
+          inline_keyboard=[[
+              InlineKeyboardButton(
+                  text=t["admin_approve"], callback_data=f"approve_sp_{user_id}"
+              ),
+              InlineKeyboardButton(
+                  text=t["admin_decline"], callback_data=f"reject_sp_{user_id}"
+              ),
+          ]]
+      )
+      await bot.send_message(admin_id, admin_text, reply_markup=kb)
+    except Exception as e:
+      print(f"Не удалось отправить заявку админу {admin_id}: {e}")
 
 
 # --- МЕНЮ СПОНСОРОВ (СПИСКИ БРАТЬЕВ И СЕСТЕР) ---
@@ -497,7 +693,6 @@ async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    # Сначала ищем в черновиках, если нет — в основной таблице
     cur.execute(
         "SELECT name, gender, age, sobriety, city, program_info, phone FROM"
         " sponsor_drafts WHERE user_id = %s;",
@@ -692,7 +887,6 @@ async def finish_editing(callback: CallbackQuery, state: FSMContext, bot: Bot):
   try:
     conn = psycopg2.connect(DATABASE_URL)
     cur = conn.cursor()
-    # Надежная вставка с upsert (если анкета уже есть — полностью перезаписываем свежими данными)
     cur.execute(
         """
             INSERT INTO sponsor_drafts (user_id, name, gender, age, sobriety, city, username, phone, program_info)
@@ -729,7 +923,6 @@ async def finish_editing(callback: CallbackQuery, state: FSMContext, bot: Bot):
   await callback.message.edit_text(t["success_draft"])
   await state.clear()
 
-  # Рассылка уведомлений админам
   for admin_id in ADMINS:
     try:
       admin_text = (
