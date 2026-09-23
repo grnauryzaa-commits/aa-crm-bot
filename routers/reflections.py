@@ -57,7 +57,7 @@ MORNING_PRAYER_TEXT_KK = (
 EVENING_PRAYER_TEXT_KK = (
     "🌙 <b>АА ҚБ бойынша 11-ші қадам әрекеттері</b>\n"
     "<i>Кешкі бөлім (Қорытынды жасау)</i>\n\n"
-    "Кшке, ұйықтар алдында, біз күннің қорытындысын жасаймыз:\n\n"
+    "Кешке, ұйықтар алдында, біз күннің қорытындысын жасаймыз:\n\n"
     "1. Мен бүгін эгоист болдым ба? Әділетсіз болдым ба? Ашуландым ба? Қорқынышты сездім бе?\n"
     "2. Біреуден кешірім сұрауым керек пе?\n"
     "3. Айналамдағыларға мейірімді әрі мұқият болдым ба?\n"
@@ -74,26 +74,26 @@ EVENING_PRAYER_TEXT = EVENING_PRAYER_TEXT_RU
 def format_reflection_text(text, today, lang="ru"):
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     forbidden = [
-        "WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:", 
-        "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp", 
-        "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", "Skype", "Mail", 
+        "WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:",
+        "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp",
+        "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", "Skype", "Mail",
         "Альтернативный вариант", "Ежедневные Размышления на", "Сегодня"
     ]
     filtered = [line for line in lines if not any(f in line for f in forbidden)]
     if len(filtered) > 0 and f"{today.day}" in filtered[0] and len(filtered[0]) < 20:
         filtered.pop(0)
-    
+
     body = "\n\n".join(filtered)
-    
+
     if lang == "kk":
         months_kk = [
-            "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның", 
+            "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның",
             "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның"
         ]
         return f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n📋 <b>{today.day} {months_kk[today.month - 1]}</b>\n\n{html.escape(body)}"
     else:
         months_ru = [
-            "января", "февраля", "марта", "апреля", "мая", "июня", 
+            "января", "февраля", "марта", "апреля", "мая", "июня",
             "июля", "августа", "сентября", "октября", "ноября", "декабря"
         ]
         return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months_ru[today.month - 1]}</b>\n\n{html.escape(body)}"
@@ -102,14 +102,14 @@ def format_reflection_text(text, today, lang="ru"):
 async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNEL_ID):
     """
     Отправка ежедневных размышлений строго на выбранном языке:
-    - lang="kk" берет данные из таблицы reflections (Казахский)
-    - lang="ru" берет данные из таблицы reflections_archive (Русский)
+    - lang="ru" → таблица reflections_archive (month и day — числа)
+    - lang="kk" → таблица reflections (month — строка, порядок по OFFSET)
     """
     today = datetime.now()
-    
+
     months_map_kk = {
-        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 
-        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август", 
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
         9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
     }
     current_month_name = months_map_kk.get(today.month, "Январь")
@@ -117,29 +117,37 @@ async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNE
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
-        
+
         if lang == "kk":
-            # Берем казахский вариант из таблицы reflections
-            cur.execute("SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s", 
-                        (current_month_name, today.day - 1))
+            # Казахская таблица: месяц — строкой, порядок по OFFSET
+            cur.execute(
+                "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
+                (current_month_name, today.day - 1),
+            )
             row = cur.fetchone()
         else:
-            # Берем русский вариант из таблицы reflections_archive
-            cur.execute("SELECT title, text FROM reflections_archive WHERE month = %s LIMIT 1 OFFSET %s", 
-                        (current_month_name, today.day - 1))
+            # Русская таблица: месяц и день — числами
+            cur.execute(
+                "SELECT title, text FROM reflections_archive "
+                "WHERE month = %s AND day = %s LIMIT 1",
+                (today.month, today.day),
+            )
             row = cur.fetchone()
-        
+
         cur.close()
         conn.close()
-        
+
         if row:
             title, content = row
             full_text = f"📌 <b>{title}</b>\n\n{content}"
             formatted_text = format_reflection_text(full_text, today, lang=lang)
             await bot.send_message(target_chat_id, formatted_text, parse_mode="HTML")
         else:
-            logging.warning(f"Размышление на языке '{lang}' на сегодня (месяц: {current_month_name}, день: {today.day}) не найдено.")
-            
+            logging.warning(
+                f"Размышление на языке '{lang}' на сегодня "
+                f"(месяц: {current_month_name}, день: {today.day}) не найдено."
+            )
+
     except Exception as e:
         logging.error(f"Ошибка получения размышлений из БД: {e}")
 
