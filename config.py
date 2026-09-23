@@ -4,7 +4,7 @@ import os
 TOKEN = os.getenv("TOKEN") or os.getenv("BOT_TOKEN") or "8648635817:AAFBvlyhdjBO17i738EbIgkt3-Q4NCEAJXA"
 BOT_TOKEN = TOKEN  
 
-DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
+DATABASE_URL = os.getenv("DATABASE_URL") or "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railway.internal:5432/railway"
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
