@@ -170,7 +170,7 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
 
 def _edit_menu_kb(lang: str, owner_id: int = None):
     """Клавиатура меню редактирования.
-    Если owner_id задан — callback_data будет содержать целевой user_id,
+    Если owner_id задан — callback_data содержит целевой user_id,
     чтобы админ мог редактировать чужую анкету."""
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     suffix = f"_{owner_id}" if owner_id else ""
@@ -210,6 +210,12 @@ def _edit_menu_kb(lang: str, owner_id: int = None):
                 InlineKeyboardButton(
                     text=t["edit_phone_btn"],
                     callback_data=f"edit_field_phone_{lang}{suffix}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["edit_done"],
+                    callback_data=f"edit_done_{lang}{suffix}",
                 )
             ],
         ]
@@ -460,10 +466,12 @@ async def process_sponsor_phone(message: Message, state: FSMContext, bot: Bot):
             kb = InlineKeyboardMarkup(
                 inline_keyboard=[[
                     InlineKeyboardButton(
-                        text=t["admin_approve"], callback_data=f"approve_sp_{user_id}"
+                        text=t["admin_approve"],
+                        callback_data=f"approve_sp_{user_id}",
                     ),
                     InlineKeyboardButton(
-                        text=t["admin_decline"], callback_data=f"reject_sp_{user_id}"
+                        text=t["admin_decline"],
+                        callback_data=f"reject_sp_{user_id}",
                     ),
                 ]]
             )
@@ -541,9 +549,13 @@ async def sponsors_menu_cb(callback: CallbackQuery):
         ]
     )
     try:
-        await callback.message.edit_text(t["choose_list"], reply_markup=keyboard)
+        await callback.message.edit_text(
+            t["choose_list"], reply_markup=keyboard
+        )
     except Exception:
-        await callback.message.answer(t["choose_list"], reply_markup=keyboard)
+        await callback.message.answer(
+            t["choose_list"], reply_markup=keyboard
+        )
     await callback.answer()
 
 
@@ -567,7 +579,9 @@ async def show_list_page(callback: CallbackQuery):
             lang = "ru"
 
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
-    label = t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
+    label = (
+        t["label_brothers"] if list_type == "brothers" else t["label_sisters"]
+    )
 
     if list_type == "brothers":
         db_query_filter = (
@@ -675,8 +689,8 @@ async def show_details(callback: CallbackQuery):
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
         cur.execute(
-            "SELECT name, gender, age, sobriety, city, username, phone, program_info"
-            " FROM sponsors WHERE user_id = %s;",
+            "SELECT name, gender, age, sobriety, city, username, phone,"
+            " program_info FROM sponsors WHERE user_id = %s;",
             (user_id,),
         )
         sp = cur.fetchone()
@@ -700,7 +714,8 @@ async def show_details(callback: CallbackQuery):
         f"🕊 <b>Трезвость:</b> {sobriety}\n"
         f"📍 <b>Город:</b> {city_name}\n\n"
         f"📖 <b>Опыт:</b> {program_info}\n\n"
-        f"✈️ <b>Telegram:</b> @{username if username and username != 'нет' else 'нет'}\n"
+        f"✈️ <b>Telegram:</b> @"
+        f"{username if username and username != 'нет' else 'нет'}\n"
         f"📞 <b>Телефон:</b> {phone}"
     )
 
@@ -714,7 +729,9 @@ async def show_details(callback: CallbackQuery):
     is_admin = callback.from_user.id in ADMINS
     if is_owner or is_admin:
         edit_text = (
-            t["edit_admin_btn"] if (is_admin and not is_owner) else t["btn_edit"]
+            t["edit_admin_btn"]
+            if (is_admin and not is_owner)
+            else t["btn_edit"]
         )
         rows.insert(
             0,
@@ -751,7 +768,6 @@ async def edit_sp_card(callback: CallbackQuery, state: FSMContext):
 
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
-    # Гарантируем, что есть черновик для редактирования
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
@@ -773,7 +789,7 @@ async def edit_sp_card(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-# --- МЕНЮ РЕДАКТИРОВАНИЯ АНКЕТЫ (ДЛЯ ВЛАДЕЛЬЦА — БЕЗ target_user_id) ---
+# --- МЕНЮ РЕДАКТИРОВАНИЯ АНКЕТЫ (ДЛЯ ВЛАДЕЛЬЦА) ---
 @router.callback_query(F.data.startswith("open_edit_menu_"))
 async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
     if callback.message.chat.type != "private":
@@ -787,7 +803,6 @@ async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
 
     user_id = callback.from_user.id
 
-    # Если есть только одобренная карточка — копируем её в черновик
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
@@ -821,17 +836,17 @@ async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("edit_field_"))
 async def start_edit_field(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
-    # форматы: edit_field_<field>_<lang>  |  edit_field_<field>_<lang>_<owner_id>
+    # форматы: edit_field_<field>_<lang> | edit_field_<field>_<lang>_<uid>
     field = parts[2]
     lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
 
-    # целевой user_id: если админ редактирует чужую — берём из callback,
-    # иначе из state
     state_data = await state.get_data()
     if len(parts) > 4 and parts[4].isdigit():
         target_user_id = int(parts[4])
     else:
-        target_user_id = state_data.get("target_user_id") or callback.from_user.id
+        target_user_id = (
+            state_data.get("target_user_id") or callback.from_user.id
+        )
 
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -848,8 +863,12 @@ async def start_edit_field(callback: CallbackQuery, state: FSMContext):
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [
-                    KeyboardButton(text="Брат" if lang == "ru" else "Бауыр"),
-                    KeyboardButton(text="Сестра" if lang == "ru" else "Әпке"),
+                    KeyboardButton(
+                        text="Брат" if lang == "ru" else "Бауыр"
+                    ),
+                    KeyboardButton(
+                        text="Сестра" if lang == "ru" else "Әпке"
+                    ),
                 ]
             ],
             resize_keyboard=True,
@@ -911,12 +930,10 @@ async def _update_draft_field(
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
-        # Обновляем черновик
         cur.execute(
             f"UPDATE sponsor_drafts SET {column} = %s WHERE user_id = %s;",
             (value, user_id),
         )
-        # Если есть одобренная карточка — тоже обновляем
         cur.execute(
             f"UPDATE sponsors SET {column} = %s WHERE user_id = %s;",
             (value, user_id),
@@ -928,7 +945,9 @@ async def _update_draft_field(
         print(f"Ошибка обновления поля {field}: {e}")
         traceback.print_exc()
 
-    await message.answer(t["field_updated"], reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        t["field_updated"], reply_markup=ReplyKeyboardRemove()
+    )
     await message.answer(
         t["edit_menu_title"],
         reply_markup=_edit_menu_kb(lang, owner_id=user_id),
@@ -1006,11 +1025,35 @@ async def save_edit_phone(message: Message, state: FSMContext):
     )
 
 
+# --- ЗАВЕРШЕНИЕ РЕДАКТИРОВАНИЯ (КНОПКА «ГОТОВО») ---
+@router.callback_query(F.data.startswith("edit_done_"))
+async def edit_done(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    # формат: edit_done_<lang> | edit_done_<lang>_<uid>
+    lang = parts[2] if len(parts) > 2 and parts[2] in ["ru", "kk"] else "ru"
+    t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+    await state.clear()
+
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    await callback.message.answer(
+        t["field_updated"],
+        reply_markup=get_fallback_menu_keyboard(lang),
+    )
+    await callback.answer()
+
+
 # --- АДМИНСКАЯ МОДЕРАЦИЯ (ОДОБРИТЬ / ОТКЛОНИТЬ) ---
 @router.callback_query(F.data.startswith("approve_sp_"))
 async def approve_sponsor(callback: CallbackQuery, bot: Bot):
     if callback.from_user.id not in ADMINS:
-        await callback.answer("У вас нет прав администратора.", show_alert=True)
+        await callback.answer(
+            "У вас нет прав администратора.", show_alert=True
+        )
         return
 
     user_id = callback.data.split("_")[2]
@@ -1064,7 +1107,9 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
 @router.callback_query(F.data.startswith("reject_sp_"))
 async def reject_sponsor(callback: CallbackQuery, bot: Bot):
     if callback.from_user.id not in ADMINS:
-        await callback.answer("У вас нет прав администратора.", show_alert=True)
+        await callback.answer(
+            "У вас нет прав администратора.", show_alert=True
+        )
         return
 
     user_id = callback.data.split("_")[2]
