@@ -1,3 +1,4 @@
+import re
 import traceback
 import psycopg2
 from aiogram import Bot, F, Router
@@ -16,6 +17,13 @@ from config import ADMINS, DATABASE_URL
 from database import get_user_language
 
 router = Router()
+
+
+def clean_age(raw) -> str:
+    """Очищает возраст — оставляет только цифры.
+    '59 лет' -> '59', '59лет' -> '59', 'мне 59' -> '59', 'abc' -> '0'."""
+    digits = re.sub(r"\D", "", str(raw or "0"))
+    return digits if digits else "0"
 
 
 class SponsorForm(StatesGroup):
@@ -100,7 +108,7 @@ FORM_TEXTS = {
         "menu_title": (
             "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және"
             " басқалармен тәжірибе бөлісуге дайын адам. Егер сіз өзіңізде күш"
-            " сезінсеңіз және тұрақты тазалық мерзіміңіз болса, демеуші ретінде"
+            " сезіңіз және тұрақты тазалық мерзіміңіз болса, демеуші ретінде"
             " тіркеле аласыз."
         ),
         "btn_fill": "📝 Демеуші сауалнамасын толтыру",
@@ -169,9 +177,6 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
 
 
 def _edit_menu_kb(lang: str, owner_id: int = None):
-    """Клавиатура меню редактирования.
-    Если owner_id задан — callback_data содержит целевой user_id,
-    чтобы админ мог редактировать чужую анкету."""
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
     suffix = f"_{owner_id}" if owner_id else ""
     return InlineKeyboardMarkup(
@@ -223,8 +228,6 @@ def _edit_menu_kb(lang: str, owner_id: int = None):
 
 
 def _ensure_draft_row(cur, user_id: int):
-    """Если у пользователя нет черновика, но есть одобренная карточка —
-    копируем её в sponsor_drafts, чтобы можно было редактировать."""
     cur.execute("SELECT 1 FROM sponsor_drafts WHERE user_id = %s;", (user_id,))
     if cur.fetchone():
         return
@@ -350,7 +353,9 @@ async def process_sponsor_gender(message: Message, state: FSMContext):
 
 @router.message(SponsorForm.age)
 async def process_sponsor_age(message: Message, state: FSMContext):
-    await state.update_data(age=message.text.strip())
+    # Очищаем возраст: "59 лет" -> "59"
+    age = clean_age(message.text)
+    await state.update_data(age=age)
     data = await state.get_data()
     lang = data.get("lang", "ru")
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
@@ -403,7 +408,7 @@ async def process_sponsor_phone(message: Message, state: FSMContext, bot: Bot):
 
     name = data.get("name", "Не указано")
     gender = data.get("gender", "Не указано")
-    age = str(data.get("age", "0"))
+    age = clean_age(data.get("age", "0"))
     sobriety = data.get("sobriety", "Не указано")
     city = data.get("city", "Не указано")
     program_info = data.get("program_info", "Не указано")
@@ -755,7 +760,6 @@ async def show_details(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("edit_sp_card_"))
 async def edit_sp_card(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
-    # edit_sp_card_<user_id>_<lang>
     target_user_id = int(parts[3])
     lang = parts[4] if len(parts) > 4 and parts[4] in ["ru", "kk"] else "ru"
 
@@ -836,7 +840,6 @@ async def open_edit_menu(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("edit_field_"))
 async def start_edit_field(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
-    # форматы: edit_field_<field>_<lang> | edit_field_<field>_<lang>_<uid>
     field = parts[2]
     lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
 
@@ -980,9 +983,8 @@ async def save_edit_age(message: Message, state: FSMContext):
     data = await state.get_data()
     lang = data.get("lang", "ru")
     target = data.get("target_user_id") or message.from_user.id
-    await _update_draft_field(
-        target, "age", message.text.strip(), lang, message
-    )
+    age = clean_age(message.text)
+    await _update_draft_field(target, "age", age, lang, message)
 
 
 @router.message(SponsorEditForm.edit_sobriety)
@@ -1029,7 +1031,6 @@ async def save_edit_phone(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("edit_done_"))
 async def edit_done(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
-    # формат: edit_done_<lang> | edit_done_<lang>_<uid>
     lang = parts[2] if len(parts) > 2 and parts[2] in ["ru", "kk"] else "ru"
     t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
 
@@ -1069,6 +1070,10 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
         draft = cur.fetchone()
 
         if draft:
+            # На случай старых записей — очищаем возраст перед вставкой
+            name, gender, age, sobriety, city, username, phone, program_info = draft
+            age = clean_age(age)
+
             cur.execute(
                 """
                     INSERT INTO sponsors (user_id, name, gender, age, sobriety, city, username, phone, program_info)
@@ -1078,7 +1083,17 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
                         sobriety = EXCLUDED.sobriety, city = EXCLUDED.city, username = EXCLUDED.username,
                         phone = EXCLUDED.phone, program_info = EXCLUDED.program_info;
                 """,
-                (user_id, *draft),
+                (
+                    user_id,
+                    name,
+                    gender,
+                    age,
+                    sobriety,
+                    city,
+                    username,
+                    phone,
+                    program_info,
+                ),
             )
             cur.execute(
                 "DELETE FROM sponsor_drafts WHERE user_id = %s;", (user_id,)
