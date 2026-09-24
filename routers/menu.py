@@ -11,6 +11,7 @@ from routers.reflections import (
     EVENING_PRAYER_TEXT_RU,
     MORNING_PRAYER_TEXT_KK,
     MORNING_PRAYER_TEXT_RU,
+    format_reflection_text,
 )
 import psycopg2
 
@@ -104,105 +105,39 @@ TEXTS = {
 
 
 def get_main_menu_keyboard(lang="ru"):
-  t = TEXTS[lang]
-  return types.ReplyKeyboardMarkup(
-      keyboard=[
-          [types.KeyboardButton(text=t["btn_reflection"])],
-          [
-              types.KeyboardButton(text=t["btn_step11"]),
-              types.KeyboardButton(text=t["btn_sponsor"]),
-          ],
-          [
-              types.KeyboardButton(text=t["btn_sponsors"]),
-              types.KeyboardButton(text=t["btn_schedule"]),
-          ],
-          [
-              types.KeyboardButton(text=t["btn_help"]),
-              types.KeyboardButton(text=t["btn_lang"]),
-          ],
-      ],
-      resize_keyboard=True,
-      input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇",
-  )
-
-
-def format_reflection_text(text, today, lang="ru"):
-  lines = [l.strip() for l in text.split("\n") if l.strip()]
-  forbidden = [
-      "WWW.MOS-NACH.RU",
-      "Анонимные Алкоголики.",
-      "Группа",
-      "Поделиться:",
-      "Рассказать:",
-      "Twitter",
-      "Facebook",
-      "Vkontakte",
-      "WhatsApp",
-      "Telegram",
-      "EMail",
-      "Тег audio",
-      "Aудио-ежедневник",
-      "Skype",
-      "Mail",
-      "Альтернативный вариант",
-      "Ежедневные Размышления на",
-      "Сегодня",
-  ]
-  filtered = [
-      line
-      for line in lines
-      if not any(
-          f in line.casefold() for f in [x.casefold() for x in forbidden]
-      )
-  ]
-
-  if (
-      len(filtered) > 0
-      and f"{today.day}" in filtered[0]
-      and len(filtered[0]) < 25
-  ):
-    filtered.pop(0)
-  if (
-      len(filtered) > 0
-      and f"{today.day}" in filtered[0]
-      and len(filtered[0]) < 25
-  ):
-    filtered.pop(0)
-
-  body = "\n\n".join(filtered)
-  escaped_body = html.escape(body)
-
-  if lang == "kk":
-    months_kk = [
-        "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның", 
-        "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның"
-    ]
-    return (
-        f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n📋 <b>{today.day}"
-        f" {months_kk[today.month - 1]}</b>\n\n{escaped_body}"
-    )
-  else:
-    months_ru = [
-        "января", "февраля", "марта", "апреля", "мая", "июня", 
-        "июля", "августа", "сентября", "октября", "ноября", "декабря"
-    ]
-    return (
-        f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day}"
-        f" {months_ru[today.month - 1]}</b>\n\n{escaped_body}"
+    t = TEXTS[lang]
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text=t["btn_reflection"])],
+            [
+                types.KeyboardButton(text=t["btn_step11"]),
+                types.KeyboardButton(text=t["btn_sponsor"]),
+            ],
+            [
+                types.KeyboardButton(text=t["btn_sponsors"]),
+                types.KeyboardButton(text=t["btn_schedule"]),
+            ],
+            [
+                types.KeyboardButton(text=t["btn_help"]),
+                types.KeyboardButton(text=t["btn_lang"]),
+            ],
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇",
     )
 
 
 @router.message(F.chat.type == "private", Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
-  await state.clear()
-  lang = await get_user_language(message.from_user.id)
-  if not lang:
-    lang = "ru"
-  await message.answer(
-      TEXTS[lang]["start_greeting"],
-      reply_markup=get_main_menu_keyboard(lang),
-      parse_mode="HTML",
-  )
+    await state.clear()
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+        lang = "ru"
+    await message.answer(
+        TEXTS[lang]["start_greeting"],
+        reply_markup=get_main_menu_keyboard(lang),
+        parse_mode="HTML",
+    )
 
 
 @router.message(
@@ -212,15 +147,15 @@ async def cmd_start(message: types.Message, state: FSMContext):
     ),
 )
 async def cmd_main_menu(message: types.Message, state: FSMContext):
-  await state.clear()
-  lang = await get_user_language(message.from_user.id)
-  if not lang:
-    lang = "ru"
-  await message.answer(
-      TEXTS[lang]["menu"],
-      reply_markup=get_main_menu_keyboard(lang),
-      parse_mode="HTML",
-  )
+    await state.clear()
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+        lang = "ru"
+    await message.answer(
+        TEXTS[lang]["menu"],
+        reply_markup=get_main_menu_keyboard(lang),
+        parse_mode="HTML",
+    )
 
 
 @router.message(
@@ -228,38 +163,38 @@ async def cmd_main_menu(message: types.Message, state: FSMContext):
     F.text.in_({"🌐 Язык: Русский", "🌐 Тіл: Қазақша"}),
 )
 async def language_menu_handler(message: types.Message):
-  lang = await get_user_language(message.from_user.id)
-  if not lang:
-    lang = "ru"
-  keyboard = types.InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              types.InlineKeyboardButton(
-                  text="🇷🇺 Русский", callback_data="set_lang_ru"
-              )
-          ],
-          [
-              types.InlineKeyboardButton(
-                  text="🇰🇿 Қазақша", callback_data="set_lang_kk"
-              )
-          ],
-      ]
-  )
-  await message.answer(TEXTS[lang]["choose_lang"], reply_markup=keyboard)
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+        lang = "ru"
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text="🇷🇺 Русский", callback_data="set_lang_ru"
+                )
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text="🇰🇿 Қазақша", callback_data="set_lang_kk"
+                )
+            ],
+        ]
+    )
+    await message.answer(TEXTS[lang]["choose_lang"], reply_markup=keyboard)
 
 
 @router.callback_query(F.data.startswith("set_lang_"))
 async def set_language_callback(callback: types.CallbackQuery):
-  if callback.message.chat.type != "private":
+    if callback.message.chat.type != "private":
+        await callback.answer()
+        return
+    lang = callback.data.split("_")[2]
+    await set_user_language(callback.from_user.id, lang)
+    t = TEXTS[lang]
+    await callback.message.answer(
+        t["lang_changed"], reply_markup=get_main_menu_keyboard(lang)
+    )
     await callback.answer()
-    return
-  lang = callback.data.split("_")[2]
-  await set_user_language(callback.from_user.id, lang)
-  t = TEXTS[lang]
-  await callback.message.answer(
-      t["lang_changed"], reply_markup=get_main_menu_keyboard(lang)
-  )
-  await callback.answer()
 
 
 @router.message(
@@ -271,45 +206,45 @@ async def set_language_callback(callback: types.CallbackQuery):
     ),
 )
 async def become_sponsors_menu_direct(message: types.Message, state: FSMContext):
-  await state.clear()
-  user_id = message.from_user.id
+    await state.clear()
+    user_id = message.from_user.id
 
-  lang = await get_user_language(user_id)
-  if not lang:
-    lang = "ru"
+    lang = await get_user_language(user_id)
+    if not lang:
+        lang = "ru"
 
-  titles = {
-      "ru": (
-          "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который"
-          " прошел Шаги и готов делиться опытом с другими."
-      ),
-      "kk": (
-          "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және"
-          " басқалармен тәжірибе бөлісуге дайын адам."
-      ),
-  }
-  btn_fills = {
-      "ru": "📝 Заполнить анкету спонсора",
-      "kk": "📝 Демеуші сауалнамасын толтыру",
-  }
-  btn_backs = {"ru": "🔙 Назад в меню", "kk": "🔙 Мәзірге оралу"}
+    titles = {
+        "ru": (
+            "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который"
+            " прошел Шаги и готов делиться опытом с другими."
+        ),
+        "kk": (
+            "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және"
+            " басқалармен тәжірибе бөлісуге дайын адам."
+        ),
+    }
+    btn_fills = {
+        "ru": "📝 Заполнить анкету спонсора",
+        "kk": "📝 Демеуші сауалнамасын толтыру",
+    }
+    btn_backs = {"ru": "🔙 Назад в меню", "kk": "🔙 Мәзірге оралу"}
 
-  keyboard = types.InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              types.InlineKeyboardButton(
-                  text=btn_fills[lang],
-                  callback_data=f"start_sponsor_registration_{lang}",
-              )
-          ],
-          [
-              types.InlineKeyboardButton(
-                  text=btn_backs[lang], callback_data=f"back_to_menu_{lang}"
-              )
-          ],
-      ]
-  )
-  await message.answer(titles[lang], reply_markup=keyboard, parse_mode="HTML")
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=btn_fills[lang],
+                    callback_data=f"start_sponsor_registration_{lang}",
+                )
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=btn_backs[lang], callback_data=f"back_to_menu_{lang}"
+                )
+            ],
+        ]
+    )
+    await message.answer(titles[lang], reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.message(
@@ -317,242 +252,238 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
     F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}),
 )
 async def show_daily_reflection(message: types.Message):
-  today = datetime.now()
-  lang = await get_user_language(message.from_user.id)
-  if not lang:
-    lang = "ru"
-    
-  try:
-    conn = psycopg2.connect(DATABASE_URL)
-    cur = conn.cursor()
-    
-    if lang == "kk":
-      # Казахская таблица ищет по названию месяца и смещению (как у вас было настроено)
-      months_map_kk = {
-          1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 
-          5: "Май", 6: "Июнь", 7: "Июль", 8: "Август", 
-          9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
-      }
-      current_month_name = months_map_kk.get(today.month, "Январь")
-      cur.execute(
-          "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
-          (current_month_name, today.day - 1),
-      )
-      row = cur.fetchone()
-      if row:
-        title, content = row
-        full_text = f"📌 <b>{title}</b>\n\n{content}"
-        text = format_reflection_text(full_text, today, lang=lang)
-      else:
-        text = None
-    else:
-      # Русский архив работает ровно так, как в вашем исходном рабочем коде
-      cur.execute(
-          "SELECT text FROM reflections_archive WHERE day = %s AND month = %s",
-          (today.day, today.month),
-      )
-      row = cur.fetchone()
-      if row:
-        text = format_reflection_text(row[0], today, lang=lang)
-      else:
-        text = None
+    today = datetime.now()
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+        lang = "ru"
 
-    cur.close()
-    conn.close()
-    
-    if text:
-      await message.answer(
-          text, parse_mode="HTML", reply_markup=get_main_menu_keyboard(lang)
-      )
-    else:
-      msg = (
-          "На сегодня размышления не найдены в базе."
-          if lang == "ru"
-          else "Бүгінге ой-толғаулар табылмады."
-      )
-      await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
-      
-  except Exception as e:
-    logging.error(f"Ошибка получения размышлений: {e}")
-    msg = (
-        "Произошла ошибка при получении размышлений."
-        if lang == "ru"
-        else "Ой-толғауларды алу кезінде қате орын алды."
-    )
-    await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cur = conn.cursor()
+
+        if lang == "kk":
+            months_map_kk = {
+                1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+                5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+                9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+            }
+            current_month_name = months_map_kk.get(today.month, "Январь")
+            cur.execute(
+                "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
+                (current_month_name, today.day - 1),
+            )
+            row = cur.fetchone()
+        else:
+            cur.execute(
+                "SELECT text FROM reflections_archive WHERE day = %s AND month = %s",
+                (today.day, today.month),
+            )
+            row = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if row:
+            if lang == "kk":
+                text = format_reflection_text(row[1], today, lang=lang)
+            else:
+                text = format_reflection_text(row[0], today, lang=lang)
+            await message.answer(
+                text,
+                parse_mode="HTML",
+                reply_markup=get_main_menu_keyboard(lang),
+            )
+        else:
+            msg = (
+                "На сегодня размышления не найдены в базе."
+                if lang == "ru"
+                else "Бүгінге ой-толғаулар табылмады."
+            )
+            await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
+
+    except Exception as e:
+        logging.error(f"Ошибка получения размышлений: {e}")
+        msg = (
+            "Произошла ошибка при получении размышлений."
+            if lang == "ru"
+            else "Ой-толғауларды алу кезінде қате орын алды."
+        )
+        await message.answer(msg, reply_markup=get_main_menu_keyboard(lang))
 
 
 @router.message(
     F.chat.type == "private", F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"})
 )
 async def step_eleven_menu(message: types.Message):
-  lang = await get_user_language(message.from_user.id)
-  if not lang:
-    lang = "ru"
-  t = TEXTS[lang]
-  keyboard = types.InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              types.InlineKeyboardButton(
-                  text=t["step11_morning"], callback_data="get_morning_prayer"
-              )
-          ],
-          [
-              types.InlineKeyboardButton(
-                  text=t["step11_evening"], callback_data="get_evening_prayer"
-              )
-          ],
-      ]
-  )
-  await message.answer(t["step11_title"], reply_markup=keyboard, parse_mode="HTML")
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+        lang = "ru"
+    t = TEXTS[lang]
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=t["step11_morning"], callback_data="get_morning_prayer"
+                )
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=t["step11_evening"], callback_data="get_evening_prayer"
+                )
+            ],
+        ]
+    )
+    await message.answer(
+        t["step11_title"], reply_markup=keyboard, parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data == "get_morning_prayer")
 async def send_morning_callback(callback: types.CallbackQuery):
-  if callback.message.chat.type != "private":
+    if callback.message.chat.type != "private":
+        await callback.answer()
+        return
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+        lang = "ru"
+    text = MORNING_PRAYER_TEXT_KK if lang == "kk" else MORNING_PRAYER_TEXT_RU
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
-    return
-  lang = await get_user_language(callback.from_user.id)
-  if not lang:
-    lang = "ru"
-  text = MORNING_PRAYER_TEXT_KK if lang == "kk" else MORNING_PRAYER_TEXT_RU
-  await callback.message.answer(text, parse_mode="HTML")
-  await callback.answer()
 
 
 @router.callback_query(F.data == "get_evening_prayer")
 async def send_evening_callback(callback: types.CallbackQuery):
-  if callback.message.chat.type != "private":
+    if callback.message.chat.type != "private":
+        await callback.answer()
+        return
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+        lang = "ru"
+    text = EVENING_PRAYER_TEXT_KK if lang == "kk" else EVENING_PRAYER_TEXT_RU
+    await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
-    return
-  lang = await get_user_language(callback.from_user.id)
-  if not lang:
-    lang = "ru"
-  text = EVENING_PRAYER_TEXT_KK if lang == "kk" else EVENING_PRAYER_TEXT_RU
-  await callback.message.answer(text, parse_mode="HTML")
-  await callback.answer()
 
 
 @router.message(
     F.chat.type == "private", F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"})
 )
 async def sponsors_menu_handler_msg(message: types.Message):
-  lang = await get_user_language(message.from_user.id)
-  if not lang:
-    lang = "ru"
-  t = TEXTS[lang]
-  keyboard = types.InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              types.InlineKeyboardButton(
-                  text=t["sponsor_brothers"], callback_data="list_brothers_0"
-              )
-          ],
-          [
-              types.InlineKeyboardButton(
-                  text=t["sponsor_sisters"], callback_data="list_sisters_0"
-              )
-          ],
-      ]
-  )
-  await message.answer(t["sponsors_title"], reply_markup=keyboard)
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+        lang = "ru"
+    t = TEXTS[lang]
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=t["sponsor_brothers"], callback_data="list_brothers_0"
+                )
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=t["sponsor_sisters"], callback_data="list_sisters_0"
+                )
+            ],
+        ]
+    )
+    await message.answer(t["sponsors_title"], reply_markup=keyboard)
 
 
 @router.callback_query(F.data == "menu_sponsors")
 async def sponsors_menu_handler_cb(callback: types.CallbackQuery):
-  if callback.message.chat.type != "private":
+    if callback.message.chat.type != "private":
+        await callback.answer()
+        return
+    lang = await get_user_language(callback.from_user.id)
+    if not lang:
+        lang = "ru"
+    t = TEXTS[lang]
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=t["sponsor_brothers"], callback_data="list_brothers_0"
+                )
+            ],
+            [
+                types.InlineKeyboardButton(
+                    text=t["sponsor_sisters"], callback_data="list_sisters_0"
+                )
+            ],
+        ]
+    )
+    await callback.message.edit_text(t["sponsors_title"], reply_markup=keyboard)
     await callback.answer()
-    return
-  lang = await get_user_language(callback.from_user.id)
-  if not lang:
-    lang = "ru"
-  t = TEXTS[lang]
-  keyboard = types.InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              types.InlineKeyboardButton(
-                  text=t["sponsor_brothers"], callback_data="list_brothers_0"
-              )
-          ],
-          [
-              types.InlineKeyboardButton(
-                  text=t["sponsor_sisters"], callback_data="list_sisters_0"
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(t["sponsors_title"], reply_markup=keyboard)
-  await callback.answer()
 
 
 @router.message(F.chat.type == "private", F.text.in_({"❓ Помощь", "❓ Көмек"}))
 async def help_section_handler(message: types.Message):
-  lang = await get_user_language(message.from_user.id)
-  if not lang:
-    lang = "ru"
-  t = TEXTS[lang]
-  keyboard = types.InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              types.InlineKeyboardButton(
-                  text=t["help_btn"], callback_data="call_servant"
-              )
-          ]
-      ]
-  )
-  await message.answer(t["help_title"], reply_markup=keyboard, parse_mode="HTML")
+    lang = await get_user_language(message.from_user.id)
+    if not lang:
+        lang = "ru"
+    t = TEXTS[lang]
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text=t["help_btn"], callback_data="call_servant"
+                )
+            ]
+        ]
+    )
+    await message.answer(t["help_title"], reply_markup=keyboard, parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("back_to_menu"))
 async def back_to_menu_callback(callback: types.CallbackQuery):
-  if callback.message.chat.type != "private":
-    await callback.answer()
-    return
-  parts = callback.data.split("_")
-  lang = parts[3] if len(parts) > 3 else None
+    if callback.message.chat.type != "private":
+        await callback.answer()
+        return
+    parts = callback.data.split("_")
+    lang = parts[3] if len(parts) > 3 else None
 
-  if not lang:
-    lang = await get_user_language(callback.from_user.id)
     if not lang:
-      lang = "ru"
+        lang = await get_user_language(callback.from_user.id)
+        if not lang:
+            lang = "ru"
 
-  try:
-    await callback.message.delete()
-  except:
-    pass
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
 
-  await callback.message.answer(
-      TEXTS[lang]["menu"],
-      reply_markup=get_main_menu_keyboard(lang),
-      parse_mode="HTML",
-  )
-  await callback.answer()
+    await callback.message.answer(
+        TEXTS[lang]["menu"],
+        reply_markup=get_main_menu_keyboard(lang),
+        parse_mode="HTML",
+    )
+    await callback.answer()
 
 
 @router.callback_query(F.data == "call_servant")
 async def call_servant_callback(callback: types.CallbackQuery):
-  if callback.message.chat.type != "private":
+    if callback.message.chat.type != "private":
+        await callback.answer()
+        return
+    user = callback.from_user
+    lang = await get_user_language(user.id)
+    if not lang:
+        lang = "ru"
+    t = TEXTS[lang]
+    user_link = f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
+    username_text = f" (@{user.username})" if user.username else ""
+
+    alert_text = t["servant_alert"].format(
+        user_link=user_link, username_text=username_text, user_id=user.id
+    )
+
+    for servant_id in SERVANT_CHAT_IDS:
+        try:
+            await callback.bot.send_message(
+                servant_id, alert_text, parse_mode="HTML"
+            )
+        except Exception as e:
+            logging.error(f"Не удалось отправить уведомление служащему: {e}")
+
+    await callback.message.answer(t["servant_success"])
     await callback.answer()
-    return
-  user = callback.from_user
-  lang = await get_user_language(user.id)
-  if not lang:
-    lang = "ru"
-  t = TEXTS[lang]
-  user_link = f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
-  username_text = f" (@{user.username})" if user.username else ""
-
-  alert_text = t["servant_alert"].format(
-      user_link=user_link, username_text=username_text, user_id=user.id
-  )
-
-  for servant_id in SERVANT_CHAT_IDS:
-    try:
-      await callback.bot.send_message(
-          servant_id, alert_text, parse_mode="HTML"
-      )
-    except Exception as e:
-      logging.error(f"Не удалось отправить уведомление служащему: {e}")
-
-  await callback.message.answer(t["servant_success"])
-  await callback.answer()
