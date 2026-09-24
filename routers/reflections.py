@@ -2,6 +2,7 @@ from datetime import datetime
 import html
 import asyncio
 import logging
+import re
 import psycopg2
 
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
@@ -72,31 +73,96 @@ EVENING_PRAYER_TEXT = EVENING_PRAYER_TEXT_RU
 
 
 def format_reflection_text(text, today, lang="ru"):
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
-    forbidden = [
-        "WWW.MOS-NACH.RU", "Анонимные Алкоголики.", "Группа", "Поделиться:",
-        "Рассказать:", "Twitter", "Facebook", "Vkontakte", "WhatsApp",
-        "Telegram", "EMail", "Тег audio", "Aудио-ежедневник", "Skype", "Mail",
-        "Альтернативный вариант", "Ежедневные Размышления на", "Сегодня"
+    """
+    Очищает текст размышления от мусора (ссылки, служебные блоки, кнопки
+    соцсетей) и форматирует его для отправки в Telegram.
+    """
+    # 1. Убираем все известные мусорные блоки
+    garbage_patterns = [
+        r"WWW\.MOS-NACH\.RU",
+        r"Анонимные Алкоголики\.?",
+        r"Alcoholics Anonymous,?",
+        r"Группа\s*\"[^\"]*\"",
+        r"г\.\s*Москва",
+        r"Поделиться:?",
+        r"Рассказать:?",
+        r"Twitter",
+        r"Facebook",
+        r"Vkontakte",
+        r"Skype",
+        r"WhatsApp",
+        r"Telegram",
+        r"EMail",
+        r"\bMail\b",
+        r"Тег\s*audio",
+        r"Aудио-ежедневник:?\s*\d*\s*\w*",
+        r"Альтернативный вариант ежедневника\.?",
+        r"Ежедневные Размышления на\s+\d+\s+\w+\.?",
+        r"Тег audio не поддерживается вашим браузером\.?",
     ]
-    filtered = [line for line in lines if not any(f in line for f in forbidden)]
-    if len(filtered) > 0 and f"{today.day}" in filtered[0] and len(filtered[0]) < 20:
-        filtered.pop(0)
 
-    body = "\n\n".join(filtered)
+    cleaned = text
+    for pattern in garbage_patterns:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+
+    # 2. Убираем лишние пробелы
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    # 3. Вырезаем всё до первого заголовка в кавычках (обычно это название размышления)
+    title_match = re.search(r'"[^"]{3,120}"', cleaned)
+    reflection_title = None
+    if title_match:
+        reflection_title = title_match.group(0).strip('"').strip()
+        cleaned = cleaned[title_match.end():].strip()
+
+    # 4. Отрезаем всё после "Рассказать" / "Поделиться" (если ещё осталось)
+    for stop_word in ["Рассказать", "Поделиться", "Аудио-ежедневник", "Альтернативный"]:
+        if stop_word in cleaned:
+            cleaned = cleaned.split(stop_word)[0].strip()
+
+    # 5. Разбиваем на предложения и группируем в абзацы по 3 предложения
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    paragraphs = []
+    current = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        current.append(s)
+        if len(current) >= 3:
+            paragraphs.append(" ".join(current))
+            current = []
+    if current:
+        paragraphs.append(" ".join(current))
+
+    body = "\n\n".join(paragraphs)
+
+    # 6. Формируем финальный текст с заголовком
+    if reflection_title:
+        body_with_title = f"<b>{html.escape(reflection_title)}</b>\n\n{html.escape(body)}"
+    else:
+        body_with_title = html.escape(body)
 
     if lang == "kk":
         months_kk = [
             "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның",
             "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның"
         ]
-        return f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n📋 <b>{today.day} {months_kk[today.month - 1]}</b>\n\n{html.escape(body)}"
+        return (
+            f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n"
+            f"📋 <b>{today.day} {months_kk[today.month - 1]}</b>\n\n"
+            f"{body_with_title}"
+        )
     else:
         months_ru = [
             "января", "февраля", "марта", "апреля", "мая", "июня",
             "июля", "августа", "сентября", "октября", "ноября", "декабря"
         ]
-        return f"📖 <b>Ежедневные размышления АА</b>\n\n📋 <b>{today.day} {months_ru[today.month - 1]}</b>\n\n{html.escape(body)}"
+        return (
+            f"📖 <b>Ежедневные размышления АА</b>\n\n"
+            f"📋 <b>{today.day} {months_ru[today.month - 1]}</b>\n\n"
+            f"{body_with_title}"
+        )
 
 
 async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNEL_ID):
@@ -139,7 +205,8 @@ async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNE
 
         if row:
             title, content = row
-            full_text = f"📌 <b>{title}</b>\n\n{content}"
+            # Собираем текст с заголовком в начале
+            full_text = f'"{title}" {content}' if title else content
             formatted_text = format_reflection_text(full_text, today, lang=lang)
             await bot.send_message(target_chat_id, formatted_text, parse_mode="HTML")
         else:
