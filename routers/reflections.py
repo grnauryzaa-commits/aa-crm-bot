@@ -8,7 +8,6 @@ import psycopg2
 DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
 CHANNEL_ID = -1002140833802
 
-# Тексты молитв 11 шага (Русский язык)
 MORNING_PRAYER_TEXT_RU = (
     "🌾 <b>Действия 11 шага по БК АА</b>\n"
     "<i>Утренняя Часть</i>\n\n"
@@ -38,7 +37,6 @@ EVENING_PRAYER_TEXT_RU = (
     "🙏 <b>Спокойной ночи!</b>"
 )
 
-# Тексты молитв 11 шага (Казахский язык)
 MORNING_PRAYER_TEXT_KK = (
     "🌾 <b>АА ҚБ бойынша 11-ші қадам әрекеттері</b>\n"
     "<i>Таңғы бөлім</i>\n\n"
@@ -73,17 +71,30 @@ EVENING_PRAYER_TEXT = EVENING_PRAYER_TEXT_RU
 
 
 def format_reflection_text(text, today, lang="ru"):
-    """
-    Очищает текст размышления от мусора (ссылки, служебные блоки, кнопки
-    соцсетей) и форматирует его для отправки в Telegram.
-    """
-    # 1. Убираем все известные мусорные блоки
+    marker_start = re.search(
+        r"Сегодня\s*\d+\s+[А-Яа-яЁё]+", text, flags=re.IGNORECASE
+    )
+    if marker_start:
+        cleaned = text[marker_start.end():]
+    else:
+        cleaned = text
+
+    for stop in [
+        "Рассказать:",
+        "Поделиться:",
+        "Aудио-ежедневник:",
+        "Аудио-ежедневник:",
+        "Тег audio",
+        "Альтернативный вариант",
+    ]:
+        idx = cleaned.find(stop)
+        if idx != -1:
+            cleaned = cleaned[:idx]
+
     garbage_patterns = [
         r"WWW\.MOS-NACH\.RU",
-        r"Анонимные Алкоголики\.?",
-        r"Alcoholics Anonymous,?",
         r"Группа\s*\"[^\"]*\"",
-        r"г\.\s*Москва",
+        r"г\.\s*Москва\.?",
         r"Поделиться:?",
         r"Рассказать:?",
         r"Twitter",
@@ -94,34 +105,28 @@ def format_reflection_text(text, today, lang="ru"):
         r"Telegram",
         r"EMail",
         r"\bMail\b",
-        r"Тег\s*audio",
-        r"Aудио-ежедневник:?\s*\d*\s*\w*",
+        r"Тег\s*audio.*",
         r"Альтернативный вариант ежедневника\.?",
         r"Ежедневные Размышления на\s+\d+\s+\w+\.?",
-        r"Тег audio не поддерживается вашим браузером\.?",
     ]
-
-    cleaned = text
     for pattern in garbage_patterns:
         cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
 
-    # 2. Убираем лишние пробелы
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
-    # 3. Вырезаем всё до первого заголовка в кавычках (обычно это название размышления)
-    title_match = re.search(r'"[^"]{3,120}"', cleaned)
+    title_match = re.search(
+        r"([А-ЯЁ][А-ЯЁ\s\-–—,\.!?]{4,80}?)(?=\s+[А-ЯЁ][а-яё])",
+        cleaned,
+    )
     reflection_title = None
     if title_match:
-        reflection_title = title_match.group(0).strip('"').strip()
-        cleaned = cleaned[title_match.end():].strip()
+        candidate = title_match.group(1).strip(" .,-–—")
+        words = [w for w in candidate.split() if len(w) >= 2]
+        if 1 < len(words) <= 8:
+            reflection_title = candidate
+            cleaned = cleaned[title_match.end():].strip()
 
-    # 4. Отрезаем всё после "Рассказать" / "Поделиться" (если ещё осталось)
-    for stop_word in ["Рассказать", "Поделиться", "Аудио-ежедневник", "Альтернативный"]:
-        if stop_word in cleaned:
-            cleaned = cleaned.split(stop_word)[0].strip()
-
-    # 5. Разбиваем на предложения и группируем в абзацы по 3 предложения
-    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    sentences = re.split(r"(?<=[.!?])\s+(?=[А-ЯЁA-Z«\"(])", cleaned)
     paragraphs = []
     current = []
     for s in sentences:
@@ -137,46 +142,41 @@ def format_reflection_text(text, today, lang="ru"):
 
     body = "\n\n".join(paragraphs)
 
-    # 6. Формируем финальный текст с заголовком
     if reflection_title:
-        body_with_title = f"<b>{html.escape(reflection_title)}</b>\n\n{html.escape(body)}"
+        body_final = (
+            f"<b>{html.escape(reflection_title)}</b>\n\n{html.escape(body)}"
+        )
     else:
-        body_with_title = html.escape(body)
+        body_final = html.escape(body)
 
     if lang == "kk":
         months_kk = [
             "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның",
-            "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның"
+            "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның",
         ]
         return (
             f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n"
             f"📋 <b>{today.day} {months_kk[today.month - 1]}</b>\n\n"
-            f"{body_with_title}"
+            f"{body_final}"
         )
     else:
         months_ru = [
             "января", "февраля", "марта", "апреля", "мая", "июня",
-            "июля", "августа", "сентября", "октября", "ноября", "декабря"
+            "июля", "августа", "сентября", "октября", "ноября", "декабря",
         ]
         return (
             f"📖 <b>Ежедневные размышления АА</b>\n\n"
             f"📋 <b>{today.day} {months_ru[today.month - 1]}</b>\n\n"
-            f"{body_with_title}"
+            f"{body_final}"
         )
 
 
 async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNEL_ID):
-    """
-    Отправка ежедневных размышлений строго на выбранном языке:
-    - lang="ru" → таблица reflections_archive (month и day — числа)
-    - lang="kk" → таблица reflections (month — строка, порядок по OFFSET)
-    """
     today = datetime.now()
-
     months_map_kk = {
         1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
         5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
-        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь"
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
     }
     current_month_name = months_map_kk.get(today.month, "Январь")
 
@@ -185,14 +185,12 @@ async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNE
         cur = conn.cursor()
 
         if lang == "kk":
-            # Казахская таблица: месяц — строкой, порядок по OFFSET
             cur.execute(
                 "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
                 (current_month_name, today.day - 1),
             )
             row = cur.fetchone()
         else:
-            # Русская таблица: месяц и день — числами
             cur.execute(
                 "SELECT title, text FROM reflections_archive "
                 "WHERE month = %s AND day = %s LIMIT 1",
@@ -205,22 +203,18 @@ async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNE
 
         if row:
             title, content = row
-            # Собираем текст с заголовком в начале
-            full_text = f'"{title}" {content}' if title else content
-            formatted_text = format_reflection_text(full_text, today, lang=lang)
+            formatted_text = format_reflection_text(content, today, lang=lang)
             await bot.send_message(target_chat_id, formatted_text, parse_mode="HTML")
         else:
             logging.warning(
                 f"Размышление на языке '{lang}' на сегодня "
                 f"(месяц: {current_month_name}, день: {today.day}) не найдено."
             )
-
     except Exception as e:
         logging.error(f"Ошибка получения размышлений из БД: {e}")
 
 
 async def send_morning_prayer_to_channel(bot, lang="ru", target_chat_id=CHANNEL_ID):
-    """Отправка утренней молитвы 11 шага на нужном языке"""
     try:
         text = MORNING_PRAYER_TEXT_KK if lang == "kk" else MORNING_PRAYER_TEXT_RU
         await bot.send_message(target_chat_id, text, parse_mode="HTML")
@@ -229,7 +223,6 @@ async def send_morning_prayer_to_channel(bot, lang="ru", target_chat_id=CHANNEL_
 
 
 async def send_evening_prayer_to_channel(bot, lang="ru", target_chat_id=CHANNEL_ID):
-    """Отправка вечерней молитвы 11 шага на нужном языке"""
     try:
         text = EVENING_PRAYER_TEXT_KK if lang == "kk" else EVENING_PRAYER_TEXT_RU
         await bot.send_message(target_chat_id, text, parse_mode="HTML")
