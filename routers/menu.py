@@ -36,6 +36,7 @@ TEXTS = {
         "btn_schedule": "📅 Расписание",
         "btn_help": "❓ Помощь",
         "btn_lang": "🌐 Язык: Русский",
+        "btn_literature": "📖 Литература АА",
         "sponsors_title": "👥 Выберите список:",
         "sponsor_brothers": "👦 Братья",
         "sponsor_sisters": "👧 Сестры",
@@ -76,6 +77,7 @@ TEXTS = {
         "btn_schedule": "📅 Кесте",
         "btn_help": "❓ Көмек",
         "btn_lang": "🌐 Тіл: Қазақша",
+        "btn_literature": "📖 АА Әдебиеті",
         "sponsors_title": "👥 Тізімді таңдаңыз:",
         "sponsor_brothers": "👦 Бауырлар",
         "sponsor_sisters": "👧 Әпкелер",
@@ -121,12 +123,11 @@ def get_main_menu_keyboard(lang="ru"):
                 types.KeyboardButton(text=t["btn_help"]),
                 types.KeyboardButton(text=t["btn_lang"]),
             ],
+            [types.KeyboardButton(text=t["btn_literature"])],
         ],
         resize_keyboard=True,
         input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇",
     )
-
-
 @router.message(F.chat.type == "private", Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
