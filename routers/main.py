@@ -60,8 +60,8 @@ async def main():
         admin_router,
         help_router,
         schedules_router,
-        ai_chat_router,
-        literature_router,      # ← НОВОЕ: литература АА
+        literature_router,      # ← ВАЖНО: литература ВЫШЕ AI-чата
+        ai_chat_router,         # ← AI-чат ловит всё — должен быть ниже
         get_file_id_router,     # ← временный, всегда последним
     )
 
