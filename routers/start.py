@@ -29,6 +29,7 @@ START_TEXTS = {
     )
 }
 
+
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
     user = message.from_user
@@ -44,9 +45,9 @@ async def cmd_start(message: types.Message):
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO users (user_id, username, full_name) 
+            INSERT INTO users (telegram_id, username, full_name)
             VALUES (%s, %s, %s)
-            ON CONFLICT (user_id) 
+            ON CONFLICT (telegram_id)
             DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name;
             """,
             (telegram_id, username, full_name)
@@ -69,16 +70,16 @@ async def cmd_start(message: types.Message):
         )
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление админу: {e}")
-    
+
     # 1. Получаем актуальный язык пользователя из базы данных ("ru" или "kk")
     lang = await get_user_language(telegram_id)
     welcome_text = START_TEXTS.get(lang, START_TEXTS["ru"])
-    
+
     # 2. Передаем именно текстовый язык в генератор клавиатуры меню
     try:
         kb = get_main_menu_keyboard(lang)
     except TypeError:
-        # Если функция вдруг ожидает без аргументов, вызываем так (но лучше чтобы принимала lang)
+        # Если функция вдруг ожидает без аргументов, вызываем так
         kb = get_main_menu_keyboard()
 
     await message.answer(welcome_text, parse_mode="HTML", reply_markup=kb)
