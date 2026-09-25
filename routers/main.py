@@ -12,6 +12,7 @@ from database import init_db
 from routers.admin import router as admin_router
 from routers.ai_chat import router as ai_chat_router
 from routers.form import router as form_router
+from routers.get_file_id import router as get_file_id_router
 from routers.help import router as help_router
 from routers.menu import router as menu_router
 from routers.reflections import (
@@ -62,6 +63,7 @@ async def main():
       help_router,
       schedules_router,
       ai_chat_router,
+      get_file_id_router,   # ← ВРЕМЕННО, только для сбора file_id
   )
 
   scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
