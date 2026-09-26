@@ -247,7 +247,10 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
             ],
         ]
     )
-    await message.answer(titles[lang], reply_markup=keyboard, parse_mode="HTML")@router.message(
+    await message.answer(titles[lang], reply_markup=keyboard, parse_mode="HTML")
+    
+
+@router.message(
     F.chat.type == "private",
     F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}),
 )
