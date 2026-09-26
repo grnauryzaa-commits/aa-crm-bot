@@ -69,9 +69,6 @@ EVENING_PRAYER_TEXT_KK = (
 MORNING_PRAYER_TEXT = MORNING_PRAYER_TEXT_RU
 EVENING_PRAYER_TEXT = EVENING_PRAYER_TEXT_RU
 
-_UPPER = "А-ЯЁӘҒҚҢӨҰҮҺІA-Z"
-_LOWER = "а-яёәғқңөұүһіa-z"
-
 
 def format_reflection_text(text, today, lang="ru"):
     marker_start = re.search(
@@ -120,8 +117,9 @@ def format_reflection_text(text, today, lang="ru"):
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
     title_match = re.search(
-        rf"([{_UPPER}][{_UPPER}\s\-–—,\.!?]{{4,80}}?)"
-        rf"(?=\s+[{_UPPER}][{_LOWER}])",
+        r"([А-ЯЁӘҒҚҢӨҰҮҺІA-Z]"
+        r"[А-ЯЁӘҒҚҢӨҰҮҺІA-Z\s\-–—,\.!?]{4,80}?)"
+        r"(?=\s+[А-ЯЁӘҒҚҢӨҰҮҺІA-Z][а-яёәғқңөұүһіa-z])",
         cleaned,
     )
     reflection_title = None
@@ -133,7 +131,7 @@ def format_reflection_text(text, today, lang="ru"):
             cleaned = cleaned[title_match.end():].strip()
 
     sentences = re.split(
-        rf"(?<=[.!?])\s+(?=[{_UPPER}«\"(])", cleaned
+        r"(?<=[.!?])\s+(?=[А-ЯЁӘҒҚҢӨҰҮҺІA-Z«\"(])", cleaned
     )
     paragraphs = []
     current = []
@@ -159,8 +157,9 @@ def format_reflection_text(text, today, lang="ru"):
 
     if lang == "kk":
         months_kk = [
-            "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның",
-            "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның",
+            "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың",
+            "маусымның", "шілденің", "тамыздың", "қыркүйектің", "қазанның",
+            "қарашаның", "желтоқсанның",
         ]
         return (
             f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n"
@@ -196,7 +195,8 @@ async def send_daily_reflection_to_channel(
 
         if lang == "kk":
             cur.execute(
-                "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
+                "SELECT title, text FROM reflections "
+                "WHERE month = %s ORDER BY id LIMIT 1 OFFSET %s",
                 (current_month_name, today.day - 1),
             )
             row = cur.fetchone()
