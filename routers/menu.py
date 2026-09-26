@@ -272,9 +272,13 @@ async def show_daily_reflection(message: types.Message):
             }
             current_month_name = months_map_kk.get(today.month, "Январь")
             cur.execute(
-                "SELECT title, text FROM reflections "
-                "WHERE month = %s ORDER BY id LIMIT 1 OFFSET %s",
-                (current_month_name, today.day - 1),
+                "SELECT title, text FROM ("
+                "  SELECT id, title, text, "
+                "         ROW_NUMBER() OVER (ORDER BY id) AS rn "
+                "  FROM reflections "
+                "  WHERE month = %s "
+                ") sub WHERE rn = %s",
+                (current_month_name, today.day),
             )
             row = cur.fetchone()
         else:
