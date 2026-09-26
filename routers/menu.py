@@ -128,6 +128,8 @@ def get_main_menu_keyboard(lang="ru"):
         resize_keyboard=True,
         input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇",
     )
+
+
 @router.message(F.chat.type == "private", Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
@@ -286,7 +288,14 @@ async def show_daily_reflection(message: types.Message):
 
         if row:
             if lang == "kk":
-                text = format_reflection_text(row[1], today, lang=lang)
+                title_kk = row[0] or ""
+                content_kk = row[1] or ""
+                combined = (
+                    f"{title_kk}\n\n{content_kk}"
+                    if title_kk
+                    else content_kk
+                )
+                text = format_reflection_text(combined, today, lang=lang)
             else:
                 text = format_reflection_text(row[0], today, lang=lang)
             await message.answer(
@@ -324,12 +333,14 @@ async def step_eleven_menu(message: types.Message):
         inline_keyboard=[
             [
                 types.InlineKeyboardButton(
-                    text=t["step11_morning"], callback_data="get_morning_prayer"
+                    text=t["step11_morning"],
+                    callback_data="get_morning_prayer",
                 )
             ],
             [
                 types.InlineKeyboardButton(
-                    text=t["step11_evening"], callback_data="get_evening_prayer"
+                    text=t["step11_evening"],
+                    callback_data="get_evening_prayer",
                 )
             ],
         ]
@@ -377,12 +388,14 @@ async def sponsors_menu_handler_msg(message: types.Message):
         inline_keyboard=[
             [
                 types.InlineKeyboardButton(
-                    text=t["sponsor_brothers"], callback_data="list_brothers_0"
+                    text=t["sponsor_brothers"],
+                    callback_data="list_brothers_0",
                 )
             ],
             [
                 types.InlineKeyboardButton(
-                    text=t["sponsor_sisters"], callback_data="list_sisters_0"
+                    text=t["sponsor_sisters"],
+                    callback_data="list_sisters_0",
                 )
             ],
         ]
@@ -403,12 +416,14 @@ async def sponsors_menu_handler_cb(callback: types.CallbackQuery):
         inline_keyboard=[
             [
                 types.InlineKeyboardButton(
-                    text=t["sponsor_brothers"], callback_data="list_brothers_0"
+                    text=t["sponsor_brothers"],
+                    callback_data="list_brothers_0",
                 )
             ],
             [
                 types.InlineKeyboardButton(
-                    text=t["sponsor_sisters"], callback_data="list_sisters_0"
+                    text=t["sponsor_sisters"],
+                    callback_data="list_sisters_0",
                 )
             ],
         ]
@@ -417,7 +432,9 @@ async def sponsors_menu_handler_cb(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.message(F.chat.type == "private", F.text.in_({"❓ Помощь", "❓ Көмек"}))
+@router.message(
+    F.chat.type == "private", F.text.in_({"❓ Помощь", "❓ Көмек"})
+)
 async def help_section_handler(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang:
@@ -432,7 +449,9 @@ async def help_section_handler(message: types.Message):
             ]
         ]
     )
-    await message.answer(t["help_title"], reply_markup=keyboard, parse_mode="HTML")
+    await message.answer(
+        t["help_title"], reply_markup=keyboard, parse_mode="HTML"
+    )
 
 
 @router.callback_query(F.data.startswith("back_to_menu"))
