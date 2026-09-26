@@ -110,6 +110,11 @@ def format_reflection_text(text, today, lang="ru"):
         r"Тег\s*audio.*",
         r"Альтернативный вариант ежедневника\.?",
         r"Ежедневные Размышления на\s+\d+\s+\w+\.?",
+        # Казахские сноски
+        r"Анонимді Алкоголиктер,?\s*\d+[-–]бет",
+        r"Alcoholics Anonymous,?\s*\d+[-–]бет",
+        r"Анонимді Алкоголиктер",
+        r"\d+[-–]бет",
     ]
     for pattern in garbage_patterns:
         cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
@@ -176,7 +181,7 @@ def format_reflection_text(text, today, lang="ru"):
             f"📋 <b>{today.day} {months_ru[today.month - 1]}</b>\n\n"
             f"{body_final}"
         )
-
+    
 
 async def send_daily_reflection_to_channel(
     bot, lang="ru", target_chat_id=CHANNEL_ID
