@@ -1,250 +1,256 @@
 from datetime import datetime
 import html
+import asyncio
 import logging
-from aiogram import F, Router, types
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from config import DATABASE_URL, SERVANT_CHAT_IDS
-from database import get_user_language, set_user_language
-from routers.reflections import (
-    EVENING_PRAYER_TEXT_KK,
-    EVENING_PRAYER_TEXT_RU,
-    MORNING_PRAYER_TEXT_KK,
-    MORNING_PRAYER_TEXT_RU,
-    format_reflection_text,
-)
+import re
 import psycopg2
 
-from .ai_helper import ask_ai_for_beginner
+DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
+CHANNEL_ID = -1002140833802
 
-router = Router()
-
-TEXTS = {
-    "ru": {
-        "start_greeting": (
-            "Приветствую! Добро пожаловать в бот сообщества Анонимных Алкоголиков.\n\n"
-            "🤖 Вы можете задать мне любой вопрос о программе АА своими словами, и я постараюсь помочь.\n\n"
-            "👇 <b>Главное меню всегда находится внизу экрана.</b> Нажимайте на нужные кнопки:"
-        ),
-        "menu": "🏠 <b>Главное меню</b>\n\nВыберите нужный раздел внизу 👇",
-        "choose_lang": "🌐 Выберите язык интерфейса и общения с ботом:",
-        "lang_changed": "✅ Язык успешно изменен на русский!",
-        "btn_reflection": "📖 Ежедневные размышления",
-        "btn_step11": "🙏 11 Шаг",
-        "btn_sponsor": "➕ Стать спонсором",
-        "btn_sponsors": "🤝 Спонсоры",
-        "btn_schedule": "📅 Расписание",
-        "btn_help": "❓ Помощь",
-        "btn_lang": "🌐 Язык: Русский",
-        "btn_literature": "📖 Литература АА",
-        "sponsors_title": "👥 Выберите список:",
-        "sponsor_brothers": "👦 Братья",
-        "sponsor_sisters": "👧 Сестры",
-        "help_title": (
-            "❓ <b>Помощь и поддержка</b>\n\nЕсли вам тяжело или у вас срочный"
-            " вопрос — вы можете задать его мне в чате или позвать дежурного"
-            " служащего."
-        ),
-        "help_btn": "👤 Позвать живого служащего",
-        "servant_alert": (
-            "🚨 <b>Новый запрос о помощи!</b>\n\nПользователь:"
-            " {user_link}{username_text}\nID: <code>{user_id}</code>\nНажал"
-            " кнопку «Позвать живого служащего»."
-        ),
-        "servant_success": (
-            "🙏 Ваша заявка принята. Дежурный служащий сообщества уведомлен и"
-            " свяжется с вами в ближайшее время."
-        ),
-        "step11_title": "🙏 <b>11 Шаг программы АА</b>\n\nВыберите нужную практику:",
-        "step11_morning": "🌅 Утренняя молитва",
-        "step11_evening": "🌙 Вечерняя молитва",
-    },
-    "kk": {
-        "start_greeting": (
-            "Қош келдіңіз! Анонимді Алкоголиктер қауымдастығының ботына қош"
-            " келдіңіз.\n\n🤖 Сіз маған АА бағдарламасы туралы кез келген"
-            " сұрақты өз сөзіңізбен қоя аласыз, мен көмектесуге тырысамын.\n\n👇"
-            " <b>Басты мәзір әрқашан экранның төменгі бөлігінде орналасқан.</b>"
-            " Қажетті түймелерді басыңыз:"
-        ),
-        "menu": "🏠 <b>Басты мәзір</b>\n\nТөменден қажетті бөлімді таңдаңыз 👇",
-        "choose_lang": "🌐 Тілді таңдаңыз / Выберите язык:",
-        "lang_changed": "✅ Тіл қазақ тіліне өзгертілді!",
-        "btn_reflection": "📖 Күнделікті ой-толғаулар",
-        "btn_step11": "🙏 11 Қадам",
-        "btn_sponsor": "➕ Демеуші болу",
-        "btn_sponsors": "🤝 Демеушілер",
-        "btn_schedule": "📅 Кесте",
-        "btn_help": "❓ Көмек",
-        "btn_lang": "🌐 Тіл: Қазақша",
-        "btn_literature": "📖 АА Әдебиеті",
-        "sponsors_title": "👥 Тізімді таңдаңыз:",
-        "sponsor_brothers": "👦 Бауырлар",
-        "sponsor_sisters": "👧 Әпкелер",
-        "help_title": (
-            "❓ <b>Көмек және қолдау</b>\n\nЕгер сізге қиын болса немесе шұғыл"
-            " сұрағыңыз болса — оны маған чатта қоюға немесе кезекші қызметкерді"
-            " шақыруға болады."
-        ),
-        "help_btn": "👤 Тірі қызметкерді шақыру",
-        "servant_alert": (
-            "🚨 <b>Жаңа көмек сұрау!</b>\n\nПайдаланушы:"
-            " {user_link}{username_text}\nID: <code>{user_id}</code>\n«Тірі"
-            " қызметкерді шақыру» түймесін басты."
-        ),
-        "servant_success": (
-            "🙏 Өтінішіңіз қабылданды. Қауымдастықтың кезекші қызметкері"
-            " хабардар етілді және жақын арада сізбен байланысады."
-        ),
-        "step11_title": (
-            "🙏 <b>АА бағдарламасының 11-ші қадамы</b>\n\nҚажетті тәжірибені"
-            " таңдаңыз:"
-        ),
-        "step11_morning": "🌅 Таңғы дұға",
-        "step11_evening": "🌙 Кешкі дұға",
-    },
-}
-
-
-def get_main_menu_keyboard(lang="ru"):
-    t = TEXTS[lang]
-    return types.ReplyKeyboardMarkup(
-        keyboard=[
-            [types.KeyboardButton(text=t["btn_reflection"])],
-            [
-                types.KeyboardButton(text=t["btn_step11"]),
-                types.KeyboardButton(text=t["btn_sponsor"]),
-            ],
-            [
-                types.KeyboardButton(text=t["btn_sponsors"]),
-                types.KeyboardButton(text=t["btn_schedule"]),
-            ],
-            [
-                types.KeyboardButton(text=t["btn_help"]),
-                types.KeyboardButton(text=t["btn_lang"]),
-            ],
-            [types.KeyboardButton(text=t["btn_literature"])],
-        ],
-        resize_keyboard=True,
-        input_field_placeholder="Выберите раздел / Бөлімді таңдаңыз 👇",
-    )
-
-
-@router.message(F.chat.type == "private", Command("start"))
-async def cmd_start(message: types.Message, state: FSMContext):
-    await state.clear()
-    lang = await get_user_language(message.from_user.id)
-    if not lang:
-        lang = "ru"
-    await message.answer(
-        TEXTS[lang]["start_greeting"],
-        reply_markup=get_main_menu_keyboard(lang),
-        parse_mode="HTML",
-    )
-
-
-@router.message(
-    F.chat.type == "private",
-    F.text.in_(
-        {"🏠 Главное меню", "Главное меню", "🏠 Басты мәзір", "Басты мәзір"}
-    ),
+MORNING_PRAYER_TEXT_RU = (
+    "🌾 <b>Действия 11 шага по БК АА</b>\n"
+    "<i>Утренняя Часть</i>\n\n"
+    "1. <b>Молитва</b> в самом начале дня :\n"
+    "<i>«Боже, направь мои помыслы в верное русло, убереги меня от жалости к себе, бесчестных поступков, корыстолюбия».</i>\n\n"
+    "2. Утром, надо <b>подумать о предстоящем дне.</b>\n\n"
+    "3. Размышляя о предстоящем дне... Если есть неуверенность, - <b>молитва:</b>\n"
+    "<i>«Боже, дай мне вдохновение, интуитивные мысли или решения».</i>\n\n"
+    "4. <b>Погружаемся в медитацию.</b>\n"
+    "<i>«Боже, открой, каким должен быть мой следующий шаг, и дай мне всё, что необходимо для решения моих проблем. Освободи меня от своеволия».</i>\n\n"
+    "5. В течение дня, <b>если появляются сомнения</b>:\n"
+    " <i>«Боже, укажи правильную мысль или действие».</i>\n\n"
+    "6. <b>Да исполнится воля Твоя, а не моя.</b>\n"
+    "Аминь 📖🙏"
 )
-async def cmd_main_menu(message: types.Message, state: FSMContext):
-    await state.clear()
-    lang = await get_user_language(message.from_user.id)
-    if not lang:
-        lang = "ru"
-    await message.answer(
-        TEXTS[lang]["menu"],
-        reply_markup=get_main_menu_keyboard(lang),
-        parse_mode="HTML",
-    )
 
-
-@router.message(
-    F.chat.type == "private",
-    F.text.in_({"🌐 Язык: Русский", "🌐 Тіл: Қазақша"}),
+EVENING_PRAYER_TEXT_RU = (
+    "🌙 <b>Действия 11 шага по БК АА</b>\n"
+    "<i>Вечерняя Часть (Подведение итогов)</i>\n\n"
+    "Вечером, перед сном, мы подводим итоги дня:\n\n"
+    "1. Был ли я сегодня эгоистичен? Нечестен? Озлоблен? Испытывал ли страх?\n"
+    "2. Должен ли я перед кем-то извиниться?\n"
+    "3. Был ли я добр и внимателен к окружающим?\n"
+    "4. Что я мог бы сделать лучше?\n"
+    "5. Думал ли я о том, чем могу быть полезен другим?\n\n"
+    "<i>Затем мы прощаем всех, а свои ошибки вручаем Высшей Силе, прося о прощении и избавлении.</i>\n\n"
+    "🙏 <b>Спокойной ночи!</b>"
 )
-async def language_menu_handler(message: types.Message):
-    lang = await get_user_language(message.from_user.id)
-    if not lang:
-        lang = "ru"
-    keyboard = types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                types.InlineKeyboardButton(
-                    text="🇷🇺 Русский", callback_data="set_lang_ru"
-                )
-            ],
-            [
-                types.InlineKeyboardButton(
-                    text="🇰🇿 Қазақша", callback_data="set_lang_kk"
-                )
-            ],
+
+MORNING_PRAYER_TEXT_KK = (
+    "🌾 <b>АА ҚБ бойынша 11-ші қадам әрекеттері</b>\n"
+    "<i>Таңғы бөлім</i>\n\n"
+    "1. Күннің басындағы <b>дұға</b>:\n"
+    "<i>«Құдайым, ойымды дұрыс арнаға бағытта, өзімді аяудан, арсыз әрекеттерден, дүниеқоңыздықтан сақта».</i>\n\n"
+    "2. Таңертең <b>алдағы күн туралы ойлану керек.</b>\n\n"
+    "3. Алдағы күн туралы ойлана отырып... Егер сенімсіздік болса, - <b>дұға:</b>\n"
+    "<i>«Құдайым, маған шабыт, интуитивті ойлар немесе шешімдер бер».</i>\n\n"
+    "4. <b>Медитацияға терең бойлаймыз.</b>\n"
+    "<i>«Құдайым, келесі қадамым қандай болу керектігін ашып көрсет, және мәселелерімізді шешуге қажеттінің бәрін бер. Мені өз білімділігімнен азат ет».</i>\n\n"
+    "5. Күн бойы, <b>күмәнданған жағдайда</b>:\n"
+    " <i>«Құдайым, дұрыс ойды немесе әрекетті нұсқап көрсет».</i>\n\n"
+    "6. <b>Менің емес, Өзіңнің еркің орындалсын.</b>\n"
+    "Аумин 📖🙏"
+)
+
+EVENING_PRAYER_TEXT_KK = (
+    "🌙 <b>АА ҚБ бойынша 11-ші қадам әрекеттері</b>\n"
+    "<i>Кешкі бөлім (Қорытынды жасау)</i>\n\n"
+    "Кешке, ұйықтар алдында, біз күннің қорытындысын жасаймыз:\n\n"
+    "1. Мен бүгін эгоист болдым ба? Әділетсіз болдым ба? Ашуландым ба? Қорқынышты сездім бе?\n"
+    "2. Біреуден кешірім сұрауым керек пе?\n"
+    "3. Айналамдағыларға мейірімді әрі мұқият болдым ба?\n"
+    "4. Мен нені жақсырақ жасай алар едім?\n"
+    "5. Басқаларға қалай пайдалы бола алатыным туралы ойладым ба?\n\n"
+    "<i>Содан кейін бәрін кешіреміз, ал өз қателіктерімізді Жоғары Күшке тапсырып, кешірім мен құтқаруды сұраймыз.</i>\n\n"
+    "🙏 <b>Қайырлы түн!</b>"
+)
+
+MORNING_PRAYER_TEXT = MORNING_PRAYER_TEXT_RU
+EVENING_PRAYER_TEXT = EVENING_PRAYER_TEXT_RU
+
+_UPPER = "А-ЯЁӘҒҚҢӨҰҮҺІA-Z"
+_LOWER = "а-яёәғқңөұүһіa-z"
+
+
+def format_reflection_text(text, today, lang="ru"):
+    marker_start = re.search(
+        r"Сегодня\s*\d+\s+[А-Яа-яЁёӘҒҚҢӨҰҮҺІәғқңөұүһі]+",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if marker_start:
+        cleaned = text[marker_start.end():]
+    else:
+        cleaned = text
+
+    for stop in [
+        "Рассказать:",
+        "Поделиться:",
+        "Aудио-ежедневник:",
+        "Аудио-ежедневник:",
+        "Тег audio",
+        "Альтернативный вариант",
+    ]:
+        idx = cleaned.find(stop)
+        if idx != -1:
+            cleaned = cleaned[:idx]
+
+    garbage_patterns = [
+        r"WWW\.MOS-NACH\.RU",
+        r"Группа\s*\"[^\"]*\"",
+        r"г\.\s*Москва\.?",
+        r"Поделиться:?",
+        r"Рассказать:?",
+        r"Twitter",
+        r"Facebook",
+        r"Vkontakte",
+        r"Skype",
+        r"WhatsApp",
+        r"Telegram",
+        r"EMail",
+        r"\bMail\b",
+        r"Тег\s*audio.*",
+        r"Альтернативный вариант ежедневника\.?",
+        r"Ежедневные Размышления на\s+\d+\s+\w+\.?",
+    ]
+    for pattern in garbage_patterns:
+        cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    title_match = re.search(
+        rf"([{_UPPER}][{_UPPER}\s\-–—,\.!?]{{4,80}}?)"
+        rf"(?=\s+[{_UPPER}][{_LOWER}])",
+        cleaned,
+    )
+    reflection_title = None
+    if title_match:
+        candidate = title_match.group(1).strip(" .,-–—")
+        words = [w for w in candidate.split() if len(w) >= 2]
+        if 1 < len(words) <= 8:
+            reflection_title = candidate
+            cleaned = cleaned[title_match.end():].strip()
+
+    sentences = re.split(
+        rf"(?<=[.!?])\s+(?=[{_UPPER}«\"(])", cleaned
+    )
+    paragraphs = []
+    current = []
+    for s in sentences:
+        s = s.strip()
+        if not s:
+            continue
+        current.append(s)
+        if len(current) >= 3:
+            paragraphs.append(" ".join(current))
+            current = []
+    if current:
+        paragraphs.append(" ".join(current))
+
+    body = "\n\n".join(paragraphs)
+
+    if reflection_title:
+        body_final = (
+            f"<b>{html.escape(reflection_title)}</b>\n\n{html.escape(body)}"
+        )
+    else:
+        body_final = html.escape(body)
+
+    if lang == "kk":
+        months_kk = [
+            "қаңтардың", "ақпанның", "наурыздың", "сәуірдің", "мамырдың", "маусымның",
+            "шілденің", "тамыздың", "қыркүйектің", "қазанның", "қарашаның", "желтоқсанның",
         ]
-    )
-    await message.answer(TEXTS[lang]["choose_lang"], reply_markup=keyboard)
-
-
-@router.callback_query(F.data.startswith("set_lang_"))
-async def set_language_callback(callback: types.CallbackQuery):
-    if callback.message.chat.type != "private":
-        await callback.answer()
-        return
-    lang = callback.data.split("_")[2]
-    await set_user_language(callback.from_user.id, lang)
-    t = TEXTS[lang]
-    await callback.message.answer(
-        t["lang_changed"], reply_markup=get_main_menu_keyboard(lang)
-    )
-    await callback.answer()
-
-
-@router.message(
-    F.chat.type == "private",
-    (
-        F.text.in_({"➕ Стать спонсором", "➕ Демеуші болу"})
-        | F.text.contains("Демеуші болу")
-        | F.text.contains("Стать спонсором")
-    ),
-)
-async def become_sponsors_menu_direct(message: types.Message, state: FSMContext):
-    await state.clear()
-    user_id = message.from_user.id
-
-    lang = await get_user_language(user_id)
-    if not lang:
-        lang = "ru"
-
-    titles = {
-        "ru": (
-            "➕ <b>Стать спонсором в АА</b>\n\nСпонсор — это человек, который"
-            " прошел Шаги и готов делиться опытом с другими."
-        ),
-        "kk": (
-            "➕ <b>АА-да демеуші болу</b>\n\nДемеуші — Қадамдардан өткен және"
-            " басқалармен тәжірибе бөлісуге дайын адам."
-        ),
-    }
-    btn_fills = {
-        "ru": "📝 Заполнить анкету спонсора",
-        "kk": "📝 Демеуші сауалнамасын толтыру",
-    }
-    btn_backs = {"ru": "🔙 Назад в меню", "kk": "🔙 Мәзірге оралу"}
-
-    keyboard = types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                types.InlineKeyboardButton(
-                    text=btn_fills[lang],
-                    callback_data=f"start_sponsor_registration_{lang}",
-                )
-            ],
-            [
-                types.InlineKeyboardButton(
-                    text=btn_backs[lang], callback_data=f"back_to_menu_{lang}"
-                )
-            ],
+        return (
+            f"📖 <b>АА Күнделікті ой-толғаулары</b>\n\n"
+            f"📋 <b>{today.day} {months_kk[today.month - 1]}</b>\n\n"
+            f"{body_final}"
+        )
+    else:
+        months_ru = [
+            "января", "февраля", "марта", "апреля", "мая", "июня",
+            "июля", "августа", "сентября", "октября", "ноября", "декабря",
         ]
-    )
-    await message.answer(titles[lang], reply_markup=keyboard, parse_mode="HTML")
+        return (
+            f"📖 <b>Ежедневные размышления АА</b>\n\n"
+            f"📋 <b>{today.day} {months_ru[today.month - 1]}</b>\n\n"
+            f"{body_final}"
+        )
+
+
+async def send_daily_reflection_to_channel(
+    bot, lang="ru", target_chat_id=CHANNEL_ID
+):
+    today = datetime.now()
+    months_map_kk = {
+        1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель",
+        5: "Май", 6: "Июнь", 7: "Июль", 8: "Август",
+        9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+    }
+    current_month_name = months_map_kk.get(today.month, "Январь")
+
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+
+        if lang == "kk":
+            cur.execute(
+                "SELECT title, text FROM reflections WHERE month = %s LIMIT 1 OFFSET %s",
+                (current_month_name, today.day - 1),
+            )
+            row = cur.fetchone()
+        else:
+            cur.execute(
+                "SELECT title, text FROM reflections_archive "
+                "WHERE month = %s AND day = %s LIMIT 1",
+                (today.month, today.day),
+            )
+            row = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if row:
+            title, content = row
+            if lang == "kk" and title:
+                combined = f"{title}\n\n{content}"
+            else:
+                combined = content
+            formatted_text = format_reflection_text(
+                combined, today, lang=lang
+            )
+            await bot.send_message(
+                target_chat_id, formatted_text, parse_mode="HTML"
+            )
+        else:
+            logging.warning(
+                f"Размышление на языке '{lang}' на сегодня "
+                f"(месяц: {current_month_name}, день: {today.day}) не найдено."
+            )
+    except Exception as e:
+        logging.error(f"Ошибка получения размышлений из БД: {e}")
+
+
+async def send_morning_prayer_to_channel(
+    bot, lang="ru", target_chat_id=CHANNEL_ID
+):
+    try:
+        text = (
+            MORNING_PRAYER_TEXT_KK if lang == "kk" else MORNING_PRAYER_TEXT_RU
+        )
+        await bot.send_message(target_chat_id, text, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Ошибка отправки утренней молитвы: {e}")
+
+
+async def send_evening_prayer_to_channel(
+    bot, lang="ru", target_chat_id=CHANNEL_ID
+):
+    try:
+        text = (
+            EVENING_PRAYER_TEXT_KK if lang == "kk" else EVENING_PRAYER_TEXT_RU
+        )
+        await bot.send_message(target_chat_id, text, parse_mode="HTML")
+    except Exception as e:
+        logging.error(f"Ошибка отправки вечерней молитвы: {e}")
