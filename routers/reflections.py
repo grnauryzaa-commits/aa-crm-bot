@@ -69,10 +69,16 @@ EVENING_PRAYER_TEXT_KK = (
 MORNING_PRAYER_TEXT = MORNING_PRAYER_TEXT_RU
 EVENING_PRAYER_TEXT = EVENING_PRAYER_TEXT_RU
 
+# Заглавные и строчные буквы — русские И казахские
+_UPPER = "А-ЯЁӘҒҚҢӨҰҮҺІA-Z"
+_LOWER = "а-яёәғқңөұүһіa-z"
+
 
 def format_reflection_text(text, today, lang="ru"):
     marker_start = re.search(
-        r"Сегодня\s*\d+\s+[А-Яа-яЁё]+", text, flags=re.IGNORECASE
+        r"Сегодня\s*\d+\s+[А-Яа-яЁёӘҒҚҢӨҰҮҺІәғқңөұүһі]+",
+        text,
+        flags=re.IGNORECASE,
     )
     if marker_start:
         cleaned = text[marker_start.end():]
@@ -114,8 +120,10 @@ def format_reflection_text(text, today, lang="ru"):
 
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
+    # Заголовок: ВЕРХНИЙ РЕГИСТР, русские + казахские буквы
     title_match = re.search(
-        r"([А-ЯЁ][А-ЯЁ\s\-–—,\.!?]{4,80}?)(?=\s+[А-ЯЁ][а-яё])",
+        rf"([{_UPPER}][{_UPPER}\s\-–—,\.!?]{{4,80}}?)"
+        rf"(?=\s+[{_UPPER}][{_LOWER}])",
         cleaned,
     )
     reflection_title = None
@@ -126,7 +134,9 @@ def format_reflection_text(text, today, lang="ru"):
             reflection_title = candidate
             cleaned = cleaned[title_match.end():].strip()
 
-    sentences = re.split(r"(?<=[.!?])\s+(?=[А-ЯЁA-Z«\"(])", cleaned)
+    sentences = re.split(
+        rf"(?<=[.!?])\s+(?=[{_UPPER}«\"(])", cleaned
+    )
     paragraphs = []
     current = []
     for s in sentences:
@@ -203,7 +213,14 @@ async def send_daily_reflection_to_channel(bot, lang="ru", target_chat_id=CHANNE
 
         if row:
             title, content = row
-            formatted_text = format_reflection_text(content, today, lang=lang)
+            # Для казахского — склеиваем title + text, чтобы заголовок попал в сообщение
+            if lang == "kk" and title:
+                combined = f"{title}\n\n{content}"
+            else:
+                combined = content
+            formatted_text = format_reflection_text(
+                combined, today, lang=lang
+            )
             await bot.send_message(target_chat_id, formatted_text, parse_mode="HTML")
         else:
             logging.warning(
