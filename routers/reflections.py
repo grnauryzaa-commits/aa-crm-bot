@@ -199,12 +199,8 @@ async def send_daily_reflection_to_channel(
 
         if lang == "kk":
             cur.execute(
-                "SELECT title, text FROM ("
-                "  SELECT id, title, text, "
-                "         ROW_NUMBER() OVER (ORDER BY id) AS rn "
-                "  FROM reflections "
-                "  WHERE month = %s "
-                ") sub WHERE rn = %s",
+                "SELECT title, text FROM reflections "
+                "WHERE month = %s AND day = %s LIMIT 1",
                 (current_month_name, today.day),
             )
             row = cur.fetchone()
