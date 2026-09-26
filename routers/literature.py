@@ -1,3 +1,4 @@
+import logging
 from aiogram import F, Router, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import get_user_language
@@ -33,41 +34,75 @@ LITERATURE_RU = [
     {"title": "Традиции АА: как они вырабатывались", "file_id": "BQACAgIAAxkBAAIex2q2py0F-s4b3dmQNsjEYGoFOLSPAAJMpgACwu-xSZIoRNg5XtDlPQQ"},
 ]
 
-LITERATURE_KK = []
+LITERATURE_KK = [
+    {"title": "Үлкен кітап", "file_id": "BQACAgIAAxkBAAIfOWq3TEwG8_uzOLPxmEA0W_pe02rbAAIZqwACwu-5SXzmGfa-QkdcPQQ"},
+    {"title": "Жаңа көз", "file_id": "BQACAgIAAxkBAAIfOmq3TE1uplAvRYRtfwXqXxvfNyyLAAIaqwACwu-5SWs8rIMhJPVXPQQ"},
+    {"title": "Күнделікті ой-толғаулар", "file_id": "BQACAgIAAxkBAAIfPWq3TE7QNT0CI6wp0fGDw4qkC6IxAAIbqwACwu-5SSYCP9_IPN03PQQ"},
+    {"title": "Салауатты өмір сүру АА", "file_id": "BQACAgIAAxkBAAIfP2q3TE7QTW1LbvqK9k599uA8sK5KAAIcqwACwu-5SZlA9R6RpHW6PQQ"},
+    {"title": "Тас", "file_id": "BQACAgIAAxkBAAIfQGq3TE4jXY27yVvnpPPY31TPLA_lAAIdqwACwu-5Sa9TkjeqtLxUPQQ"},
+]
 
 TEXTS = {
     "ru": {
-        "title": "📖 <b>Литература АА</b>",
-        "page": "📖 <b>Литература АА</b> — стр. {page}/{total}",
-        "no_books": "⚠️ Литература пока не загружена.",
-        "empty_kz": "⚠️ Әзірге қазақ тіліндегі әдебиет жоқ.",
+        "choose_lang": "📖 <b>Литература АА</b>\n\nВыберите язык литературы:",
+        "btn_ru": "🇷🇺 Русская литература (26)",
+        "btn_kk": "🇰🇿 Қазақ әдебиеті (5)",
+        "page": "📖 <b>{label}</b> — стр. {page}/{total}",
+        "label_ru": "Русская литература АА",
+        "label_kk": "Қазақ әдебиеті",
         "back": "⬅️ Назад",
         "forward": "Вперёд ➡️",
+        "back_langs": "🌐 К выбору языка",
         "caption": "📖 <b>{title}</b>",
+        "empty": "⚠️ Литература пока не загружена.",
     },
     "kk": {
-        "title": "📖 <b>АА Әдебиеті</b>",
-        "page": "📖 <b>АА Әдебиеті</b> — {page}/{total} бет",
-        "no_books": "⚠️ Әдебиет әзірге жүктелмеген.",
-        "empty_kz": "⚠️ Әзірге қазақ тіліндегі әдебиет жоқ.",
+        "choose_lang": "📖 <b>АА Әдебиеті</b>\n\nӘдебиет тілін таңдаңыз:",
+        "btn_ru": "🇷🇺 Орыс әдебиеті (26)",
+        "btn_kk": "🇰🇿 Қазақ әдебиеті (5)",
+        "page": "📖 <b>{label}</b> — {page}/{total} бет",
+        "label_ru": "Орыс тіліндегі әдебиет",
+        "label_kk": "Қазақ әдебиеті",
         "back": "⬅️ Артқа",
         "forward": "Алға ➡️",
+        "back_langs": "🌐 Тіл таңдауға",
         "caption": "📖 <b>{title}</b>",
+        "empty": "⚠️ Әдебиет әзірге жүктелмеген.",
     },
 }
 
 PER_PAGE = 6
 
 
-def _get_books(lang: str):
-    if lang == "kk":
-        return LITERATURE_KK, "kk"
-    return LITERATURE_RU, "ru"
+def _books_by_key(key: str):
+    if key == "kk":
+        return LITERATURE_KK
+    return LITERATURE_RU
 
 
-def _build_page_keyboard(lang: str, page: int):
-    books, _ = _get_books(lang)
+def _language_menu_kb(lang: str):
     t = TEXTS.get(lang, TEXTS["ru"])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=t["btn_ru"], callback_data="lit_lang_ru"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=t["btn_kk"], callback_data="lit_lang_kk"
+                )
+            ],
+        ]
+    )
+    return keyboard, t["choose_lang"]
+
+
+def _build_page_keyboard(book_key: str, page: int, interface_lang: str):
+    books = _books_by_key(book_key)
+    t = TEXTS.get(interface_lang, TEXTS["ru"])
+    label = t["label_ru"] if book_key == "ru" else t["label_kk"]
 
     if not books:
         return None, None
@@ -88,7 +123,7 @@ def _build_page_keyboard(lang: str, page: int):
         keyboard.append([
             InlineKeyboardButton(
                 text=f"📕 {book['title']}",
-                callback_data=f"lit_{real_idx}_{lang}",
+                callback_data=f"lit_book_{book_key}_{real_idx}",
             )
         ])
 
@@ -97,22 +132,27 @@ def _build_page_keyboard(lang: str, page: int):
         nav.append(
             InlineKeyboardButton(
                 text=t["back"],
-                callback_data=f"lit_page_{page - 1}_{lang}",
+                callback_data=f"lit_pg_{book_key}_{page - 1}",
             )
         )
     if page < total - 1:
         nav.append(
             InlineKeyboardButton(
                 text=t["forward"],
-                callback_data=f"lit_page_{page + 1}_{lang}",
+                callback_data=f"lit_pg_{book_key}_{page + 1}",
             )
         )
     if nav:
         keyboard.append(nav)
 
-    return InlineKeyboardMarkup(inline_keyboard=keyboard), t["page"].format(
-        page=page + 1, total=total
-    )
+    keyboard.append([
+        InlineKeyboardButton(
+            text=t["back_langs"], callback_data="lit_langs"
+        )
+    ])
+
+    title = t["page"].format(label=label, page=page + 1, total=total)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard), title
 
 
 @router.message(
@@ -121,24 +161,64 @@ def _build_page_keyboard(lang: str, page: int):
 )
 async def show_literature(message: types.Message):
     lang = await get_user_language(message.from_user.id) or "ru"
-    t = TEXTS.get(lang, TEXTS["ru"])
-
-    books, _ = _get_books(lang)
-    if not books:
-        await message.answer(t["empty_kz"] if lang == "kk" else t["no_books"])
-        return
-
-    keyboard, title = _build_page_keyboard(lang, 0)
+    keyboard, title = _language_menu_kb(lang)
     await message.answer(title, reply_markup=keyboard, parse_mode="HTML")
 
 
-@router.callback_query(F.data.startswith("lit_page_"))
+@router.callback_query(F.data == "lit_langs")
+async def back_to_langs(callback: types.CallbackQuery):
+    lang = await get_user_language(callback.from_user.id) or "ru"
+    keyboard, title = _language_menu_kb(lang)
+    try:
+        await callback.message.edit_text(
+            title, reply_markup=keyboard, parse_mode="HTML"
+        )
+    except Exception:
+        await callback.message.answer(
+            title, reply_markup=keyboard, parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lit_lang_"))
+async def show_books_of_lang(callback: types.CallbackQuery):
+    book_key = callback.data.split("_")[2]
+    if book_key not in ["ru", "kk"]:
+        await callback.answer("⚠️ Язык не найден.", show_alert=True)
+        return
+
+    lang = await get_user_language(callback.from_user.id) or "ru"
+    t = TEXTS.get(lang, TEXTS["ru"])
+
+    books = _books_by_key(book_key)
+    if not books:
+        await callback.answer(t["empty"], show_alert=True)
+        return
+
+    keyboard, title = _build_page_keyboard(book_key, 0, lang)
+    try:
+        await callback.message.edit_text(
+            title, reply_markup=keyboard, parse_mode="HTML"
+        )
+    except Exception:
+        await callback.message.answer(
+            title, reply_markup=keyboard, parse_mode="HTML"
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("lit_pg_"))
 async def literature_page(callback: types.CallbackQuery):
     parts = callback.data.split("_")
-    page = int(parts[2])
-    lang = parts[3] if len(parts) > 3 and parts[3] in ["ru", "kk"] else "ru"
+    book_key = parts[2]
+    page = int(parts[3])
 
-    keyboard, title = _build_page_keyboard(lang, page)
+    if book_key not in ["ru", "kk"]:
+        await callback.answer("⚠️ Ошибка навигации.", show_alert=True)
+        return
+
+    lang = await get_user_language(callback.from_user.id) or "ru"
+    keyboard, title = _build_page_keyboard(book_key, page, lang)
     if keyboard is None:
         await callback.answer("⚠️ Список пуст.", show_alert=True)
         return
@@ -154,13 +234,18 @@ async def literature_page(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("lit_") & ~F.data.startswith("lit_page_"))
+@router.callback_query(F.data.startswith("lit_book_"))
 async def send_literature(callback: types.CallbackQuery):
     parts = callback.data.split("_")
-    idx = int(parts[1])
-    lang = parts[2] if len(parts) > 2 and parts[2] in ["ru", "kk"] else "ru"
+    book_key = parts[2]
+    idx = int(parts[3])
 
-    books, _ = _get_books(lang)
+    if book_key not in ["ru", "kk"]:
+        await callback.answer("⚠️ Ошибка.", show_alert=True)
+        return
+
+    books = _books_by_key(book_key)
+    lang = await get_user_language(callback.from_user.id) or "ru"
     t = TEXTS.get(lang, TEXTS["ru"])
 
     if idx < 0 or idx >= len(books):
@@ -169,9 +254,15 @@ async def send_literature(callback: types.CallbackQuery):
 
     book = books[idx]
 
-    await callback.message.answer_document(
-        document=book["file_id"],
-        caption=t["caption"].format(title=book["title"]),
-        parse_mode="HTML",
-    )
+    try:
+        await callback.message.answer_document(
+            document=book["file_id"],
+            caption=t["caption"].format(title=book["title"]),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logging.error(f"Ошибка отправки книги: {e}")
+        await callback.answer("⚠️ Не удалось отправить файл.", show_alert=True)
+        return
+
     await callback.answer()
