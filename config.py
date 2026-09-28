@@ -1,4 +1,5 @@
 import os
+import logging
 
 # Токен берём ТОЛЬКО из переменных окружения (Railway Variables)
 TOKEN = os.getenv("TOKEN") or os.getenv("BOT_TOKEN")
@@ -10,6 +11,10 @@ BOT_TOKEN = TOKEN
 
 # База данных — тоже из переменных окружения
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# DEBUG: временный лог, чтобы увидеть, что реально приходит из Railway
+logging.error("DEBUG: DATABASE_URL = %r", DATABASE_URL)
+
 if not DATABASE_URL:
     raise ValueError("ОШИБКА: Переменная окружения 'DATABASE_URL' не найдена!")
 
