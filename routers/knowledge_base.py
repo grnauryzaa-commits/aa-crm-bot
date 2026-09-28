@@ -90,9 +90,14 @@ CANONICAL_DATABASE = {
 def find_canonical_context(user_message: str) -> str:
     """
     Умный поиск по шагам, традициям и концепциям на русском и казахском языках.
+    Срабатывает ТОЛЬКО если сообщение короткое и содержит явное ключевое слово.
     """
     import re
-    msg = user_message.lower().replace("-", " ").replace("‑", " ")
+    msg = user_message.lower().strip().replace("-", " ").replace("‑", " ")
+
+    # Слишком длинное сообщение — это не справочный вопрос, отдаём ИИ
+    if len(msg.split()) > 6:
+        return ""
 
     # 1. Определяем префикс (поддерживаем оба языка)
     prefix = None
@@ -107,22 +112,17 @@ def find_canonical_context(user_message: str) -> str:
     elif "тұжырымдама" in msg:
         prefix = "тұжырымдама"
 
+    # Нет ключевого слова — выходим, отдаём ИИ
+    if not prefix:
+        return ""
+
     # 2. Ищем число от 1 до 12 в тексте
     numbers = re.findall(r'\b(1[0-2]|[1-9])\b', msg)
 
     if numbers:
         num = numbers[0]
-
-        # Если префикс точно определен — ищем по нему
-        if prefix:
-            key = f"{prefix} {num}"
-            if key in CANONICAL_DATABASE:
-                return CANONICAL_DATABASE[key]
-
-        # Если префикс не распознан явно, но есть цифра, ищем по всем возможным словарям
-        for p in ["қадам", "шаг", "дәстүр", "традиция", "концепция", "тұжырымдама"]:
-            key = f"{p} {num}"
-            if key in CANONICAL_DATABASE:
-                return CANONICAL_DATABASE[key]
+        key = f"{prefix} {num}"
+        if key in CANONICAL_DATABASE:
+            return CANONICAL_DATABASE[key]
 
     return ""
