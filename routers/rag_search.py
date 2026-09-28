@@ -507,7 +507,6 @@ def find_canonical_context(user_message: str) -> str:
     import re
     msg = user_message.lower().strip().replace("-", " ").replace("‑", " ")
 
-    # 1. Быстрые проверки для справочных вопросов
     if any(word in msg for word in ["сайт", "ссылка", "сайт қазақша", "сайт керек"]):
         return CANONICAL_DATABASE["сайт"]
     if "instagram" in msg or "инстаграм" in msg or "инста" in msg:
@@ -519,16 +518,13 @@ def find_canonical_context(user_message: str) -> str:
     if any(word in msg for word in ["онлайн", "zoom", "зум"]):
         return CANONICAL_DATABASE["онлайн группы"]
 
-    # 2. Поиск по городам (с учётом падежей RU и KK)
     for city_key, city_forms in CITY_TAGS.items():
         if any(form in msg for form in city_forms):
             return CANONICAL_DATABASE[city_key]
 
-    # 3. Общий вопрос про группы — если город не найден
     if any(word in msg for word in ["групп", "собрани", "встреч", "найти", "топ", "жиналыс"]):
         return CANONICAL_DATABASE["как найти группу"]
 
-    # 4. Поиск по шагам/традициям/концепциям
     prefix = None
     if "шаг" in msg or "шага" in msg or "шаге" in msg or "қадам" in msg:
         prefix = "қадам" if "қадам" in msg else "шаг"
