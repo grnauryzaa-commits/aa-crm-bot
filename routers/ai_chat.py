@@ -83,5 +83,5 @@ async def handle_beginner_questions(message: types.Message):
     )
 
     await message.answer(
-        ai_response, parse_mode="Markdown", reply_markup=servant_keyboard
+        ai_response, parse_mode="", reply_markup=servant_keyboard
     )
