@@ -2,9 +2,19 @@ import aiohttp
 import logging
 from config import GROQ_API_KEY
 from database import add_message_to_history, get_recent_history, get_user_language
+from knowledge_base import find_canonical_context
 
 
 async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:
+  # 1. Сначала проверяем каноническую базу — если вопрос про шаг/традицию/концепцию,
+  #    отдаём точный текст БЕЗ обращения к ИИ
+  canonical = find_canonical_context(user_message)
+  if canonical:
+    await add_message_to_history(user_id, "user", user_message)
+    await add_message_to_history(user_id, "assistant", canonical)
+    return canonical
+
+  # 2. Если канонического текста нет — идём в Groq
   if not GROQ_API_KEY:
     return (
         "Алкоголь умеет нас изолировать, но сейчас ты можешь сделать вдох и"
@@ -20,7 +30,6 @@ async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:
       else "Отвечай строго на русском языке."
   )
 
-  # Динамическое название кнопки для ИИ-подсказок в тексте
   button_name = (
       "«👤 Тірі қызметкерді шақыру»"
       if lang == "kk"
@@ -59,7 +68,7 @@ async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:
   messages = [{"role": "system", "content": system_prompt}] + history
 
   payload = {
-      "model": "llama-3.3-70b-versatile",
+      "model": "openai/gpt-oss-20b",
       "messages": messages,
       "temperature": 0.4,
       "max_tokens": 500,
@@ -77,6 +86,9 @@ async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:
               bot_reply = str(content).strip()
               await add_message_to_history(user_id, "assistant", bot_reply)
               return bot_reply
+        else:
+          error_text = await response.text()
+          logging.error(f"Groq API error {response.status}: {error_text}")
         return (
             "Я внимательно тебя слушал, но на секунду отвлекся. Если вопрос"
             " срочный, нажми кнопку связи с дежурным ниже."
