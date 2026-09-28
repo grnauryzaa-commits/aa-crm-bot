@@ -5,7 +5,7 @@ import logging
 import re
 import psycopg2
 
-DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
+from config import DATABASE_URL as DB_URL
 CHANNEL_ID = -1002140833802
 
 MORNING_PRAYER_TEXT_RU = (
