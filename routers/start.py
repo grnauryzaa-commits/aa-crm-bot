@@ -8,10 +8,11 @@ from routers.menu import get_main_menu_keyboard
 
 router = Router()
 
-DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
-ADMIN_ID = 7374545230  # Твой правильный ID
+# Используем DATABASE_URL из config.py (берётся из Railway Variables)
+DB_URL = DATABASE_URL
 
-# Словари локализации для команды /start
+ADMIN_ID = 7374545230
+
 START_TEXTS = {
     "ru": (
         "🕊 <b>Добро пожаловать в телеграм-бот группы АА «Наурыз»!</b>\n\n"
@@ -26,7 +27,7 @@ START_TEXTS = {
         "Мұнда сіз кездесулердің өзекті кестесін біле аласыз, демеуші таба аласыз "
         "немесе тәлімгер ретінде көмек көрсете аласыз.\n\n"
         "Төмендегі мәзірден қажетті бөлімді таңдаңыз 👇"
-    )
+    ),
 }
 
 
@@ -39,7 +40,6 @@ async def cmd_start(message: types.Message):
 
     logging.info(f"Пользователь {telegram_id} ({full_name}) нажал /start")
 
-    # Сохраняем или обновляем пользователя в базе данных
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -50,7 +50,7 @@ async def cmd_start(message: types.Message):
             ON CONFLICT (telegram_id)
             DO UPDATE SET username = EXCLUDED.username, full_name = EXCLUDED.full_name;
             """,
-            (telegram_id, username, full_name)
+            (telegram_id, username, full_name),
         )
         conn.commit()
         cur.close()
@@ -58,7 +58,6 @@ async def cmd_start(message: types.Message):
     except Exception as e:
         logging.error(f"Ошибка сохранения пользователя в БД: {e}")
 
-    # Отправляем уведомление тебе в личные сообщения
     try:
         await message.bot.send_message(
             ADMIN_ID,
@@ -66,20 +65,17 @@ async def cmd_start(message: types.Message):
             f"Имя: {full_name}\n"
             f"Username: {username}\n"
             f"ID: <code>{telegram_id}</code>",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
     except Exception as e:
         logging.error(f"Не удалось отправить уведомление админу: {e}")
 
-    # 1. Получаем актуальный язык пользователя из базы данных ("ru" или "kk")
     lang = await get_user_language(telegram_id)
     welcome_text = START_TEXTS.get(lang, START_TEXTS["ru"])
 
-    # 2. Передаем именно текстовый язык в генератор клавиатуры меню
     try:
         kb = get_main_menu_keyboard(lang)
     except TypeError:
-        # Если функция вдруг ожидает без аргументов, вызываем так
         kb = get_main_menu_keyboard()
 
     await message.answer(welcome_text, parse_mode="HTML", reply_markup=kb)
