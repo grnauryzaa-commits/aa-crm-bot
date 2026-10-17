@@ -13,7 +13,7 @@ async def init_db():
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
 
-    # Таблица пользователей и языков (используем telegram_id вместо user_id)
+    # Таблица пользователей
     cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id BIGINT PRIMARY KEY,
@@ -69,6 +69,10 @@ async def init_db():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10)"
         " DEFAULT 'ru';"
     )
+    # ДОБАВЛЯЕМ КОЛОНКУ ДАТЫ
+    cur.execute(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;"
+    )
 
     # Таблица архива размышлений
     cur.execute("""
@@ -102,7 +106,7 @@ async def init_db():
     raise e
 
 
-# Функции языка (исправлено на telegram_id)
+# Функции языка
 def _get_user_language_sync(user_id: int) -> str:
   try:
     conn = psycopg2.connect(DB_URL)
@@ -145,42 +149,22 @@ async def set_user_language(user_id: int, lang: str):
   await asyncio.to_thread(_set_user_language_sync, user_id, lang)
 
 
-# Генератор главного меню под конкретный язык (решает проблему сброса кнопок)
 def get_main_menu_keyboard(lang: str = "ru") -> ReplyKeyboardMarkup:
   if lang == "kk":
     keyboard = [
-        [
-            KeyboardButton(text="➕ Демеуші болу"),
-            KeyboardButton(text="🤝 Демеушілер"),
-        ],
-        [
-            KeyboardButton(text="🗓 Кесте"),
-            KeyboardButton(text="📖 Күнделікті ой-толғаулар"),
-        ],
-        [
-            KeyboardButton(text="? Көмек"),
-            KeyboardButton(text="🌐 Тіл: Қазақша"),
-        ],
+        [KeyboardButton(text="➕ Демеуші болу"), KeyboardButton(text="🤝 Демеушілер")],
+        [KeyboardButton(text="🗓 Кесте"), KeyboardButton(text="📖 Күнделікті ой-толғаулар")],
+        [KeyboardButton(text="? Көмек"), KeyboardButton(text="🌐 Тіл: Қазақша")],
     ]
   else:
     keyboard = [
-        [
-            KeyboardButton(text="➕ Стать спонсором"),
-            KeyboardButton(text="🤝 Спонсоры"),
-        ],
-        [
-            KeyboardButton(text="🗓 Расписание"),
-            KeyboardButton(text="📖 Ежедневные размышления"),
-        ],
-        [
-            KeyboardButton(text="? Помощь"),
-            KeyboardButton(text="🌐 Язык: Русский"),
-        ],
+        [KeyboardButton(text="➕ Стать спонсором"), KeyboardButton(text="🤝 Спонсоры")],
+        [KeyboardButton(text="🗓 Расписание"), KeyboardButton(text="📖 Ежедневные размышления")],
+        [KeyboardButton(text="? Помощь"), KeyboardButton(text="🌐 Язык: Русский")],
     ]
   return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 
-# Остальные функции базы данных
 def _get_sponsor_sync(user_id):
   try:
     conn = psycopg2.connect(DB_URL)
@@ -236,8 +220,7 @@ def _add_message_sync(user_id: int, role: str, content: str):
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO dialog_history (user_id, role, content) VALUES (%s, %s,"
-        " %s)",
+        "INSERT INTO dialog_history (user_id, role, content) VALUES (%s, %s, %s)",
         (user_id, role, content),
     )
     conn.commit()
@@ -256,8 +239,7 @@ def _get_recent_history_sync(user_id: int, limit: int = 6) -> list:
     conn = psycopg2.connect(DB_URL)
     cur = conn.cursor()
     cur.execute(
-        "SELECT role, content FROM dialog_history WHERE user_id = %s ORDER BY"
-        " id DESC LIMIT %s",
+        "SELECT role, content FROM dialog_history WHERE user_id = %s ORDER BY id DESC LIMIT %s",
         (user_id, limit),
     )
     rows = cur.fetchall()
@@ -277,7 +259,6 @@ async def get_recent_history(user_id: int, limit: int = 6) -> list:
 # ============================================================
 
 def _init_actions_table_sync():
-    """Создаёт таблицу user_actions, если её нет."""
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
@@ -290,14 +271,8 @@ def _init_actions_table_sync():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_user_actions_created "
-            "ON user_actions (created_at);"
-        )
-        cur.execute(
-            "CREATE INDEX IF NOT EXISTS idx_user_actions_name "
-            "ON user_actions (action_name);"
-        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_actions_created ON user_actions (created_at);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_actions_name ON user_actions (action_name);")
         conn.commit()
         cur.close()
         conn.close()
@@ -310,8 +285,7 @@ def _log_user_action_sync(user_id: int, action_type: str, action_name: str):
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO user_actions (user_id, action_type, action_name)"
-            " VALUES (%s, %s, %s);",
+            "INSERT INTO user_actions (user_id, action_type, action_name) VALUES (%s, %s, %s);",
             (user_id, action_type, action_name),
         )
         conn.commit()
@@ -322,20 +296,15 @@ def _log_user_action_sync(user_id: int, action_type: str, action_name: str):
 
 
 async def log_user_action(user_id: int, action_type: str, action_name: str):
-    """Асинхронно записывает действие пользователя в БД."""
-    await asyncio.to_thread(
-        _log_user_action_sync, user_id, action_type, action_name
-    )
+    await asyncio.to_thread(_log_user_action_sync, user_id, action_type, action_name)
 
 
 def _get_report_data_sync() -> dict:
-    """Собирает все данные для отчёта одним запросом."""
     result = {
         "total_users": 0, "active_week": 0, "total_actions": 0,
         "ai_week": 0, "top_actions": [], "total_sponsors": 0,
         "drafts_count": 0, "cities": [], "genders": [], "ages": [],
-        "monthly_users": [], "action_types": [],
-        "city_activity": [],
+        "monthly_users": [], "action_types": [], "city_activity": [],
         "lang_ru": 0, "lang_kk": 0,
     }
 
@@ -343,62 +312,43 @@ def _get_report_data_sync() -> dict:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
 
-        # 1. Пользователи
         cur.execute("SELECT COUNT(*) FROM users;")
         result["total_users"] = cur.fetchone()[0] or 0
 
-        # 2. Спонсоры и черновики
         cur.execute("SELECT COUNT(*) FROM sponsors;")
         result["total_sponsors"] = cur.fetchone()[0] or 0
 
         cur.execute("SELECT COUNT(*) FROM sponsor_drafts;")
         result["drafts_count"] = cur.fetchone()[0] or 0
 
-        # 3. Языки интерфейса
         cur.execute("SELECT language, COUNT(*) FROM users GROUP BY language;")
         langs = dict(cur.fetchall())
         result["lang_ru"] = langs.get("ru", 0)
         result["lang_kk"] = langs.get("kk", 0)
 
-        # 4. Пол спонсоров
         cur.execute("""
-            SELECT gender, COUNT(*)
-            FROM sponsors
-            WHERE gender IS NOT NULL AND gender != ''
-            GROUP BY gender;
+            SELECT gender, COUNT(*) FROM sponsors WHERE gender IS NOT NULL AND gender != '' GROUP BY gender;
         """)
         result["genders"] = cur.fetchall()
 
-        # 5. Города спонсоров
         cur.execute("""
-            SELECT city, COUNT(*)
-            FROM sponsors
-            WHERE city IS NOT NULL AND city != ''
-            GROUP BY city
-            ORDER BY COUNT(*) DESC
-            LIMIT 10;
+            SELECT city, COUNT(*) FROM sponsors WHERE city IS NOT NULL AND city != '' GROUP BY city ORDER BY COUNT(*) DESC LIMIT 10;
         """)
         result["cities"] = cur.fetchall()
 
-        # 6. Рост по месяцам (по первому сообщению в dialog_history)
+        # РОСТ ПО МЕСЯЦАМ (ПО ДАТЕ РЕГИСТРАЦИИ)
         cur.execute("""
-            WITH first_messages AS (
-                SELECT user_id, MIN(timestamp) as first_seen
-                FROM dialog_history
-                GROUP BY user_id
-            )
             SELECT 
-                TO_CHAR(first_seen, 'TMMonth YYYY') as month_name,
-                TO_CHAR(first_seen, 'YYYY-MM') as month_num,
+                TO_CHAR(created_at, 'TMMonth YYYY') as month_name,
+                TO_CHAR(created_at, 'YYYY-MM') as month_num,
                 COUNT(*) as cnt
-            FROM first_messages
+            FROM users
             GROUP BY month_name, month_num
             ORDER BY month_num DESC
             LIMIT 12;
         """)
         result["monthly_users"] = [(row[0], row[2]) for row in cur.fetchall()]
 
-        # 7. Возрастные группы
         cur.execute("""
             SELECT
                 CASE
@@ -411,48 +361,30 @@ def _get_report_data_sync() -> dict:
                     ELSE 'не указан'
                 END AS age_group,
                 COUNT(*)
-            FROM sponsors
-            WHERE age IS NOT NULL
-            GROUP BY age_group
-            ORDER BY COUNT(*) DESC;
+            FROM sponsors WHERE age IS NOT NULL GROUP BY age_group ORDER BY COUNT(*) DESC;
         """)
         result["ages"] = cur.fetchall()
 
-        # 8. Активность
         cur.execute("SELECT COUNT(*) FROM user_actions;")
         result["total_actions"] = cur.fetchone()[0] or 0
 
         cur.execute(
-            "SELECT COUNT(*) FROM user_actions "
-            "WHERE action_type = 'ai_chat' "
-            "AND created_at >= NOW() - INTERVAL '7 days';"
+            "SELECT COUNT(*) FROM user_actions WHERE action_type = 'ai_chat' AND created_at >= NOW() - INTERVAL '7 days';"
         )
         result["ai_week"] = cur.fetchone()[0] or 0
 
         cur.execute(
-            "SELECT COUNT(DISTINCT user_id) FROM user_actions "
-            "WHERE created_at >= NOW() - INTERVAL '7 days';"
+            "SELECT COUNT(DISTINCT user_id) FROM user_actions WHERE created_at >= NOW() - INTERVAL '7 days';"
         )
         result["active_week"] = cur.fetchone()[0] or 0
 
-        # 9. Группировка действий
         cur.execute("""
-            SELECT action_type, COUNT(*) as cnt
-            FROM user_actions
-            GROUP BY action_type
-            ORDER BY cnt DESC;
+            SELECT action_type, COUNT(*) as cnt FROM user_actions GROUP BY action_type ORDER BY cnt DESC;
         """)
         result["action_types"] = cur.fetchall()
 
-        # 10. Активность по городам
         cur.execute("""
-            SELECT s.city, COUNT(ua.id) as cnt
-            FROM user_actions ua
-            JOIN sponsors s ON ua.user_id = s.user_id
-            WHERE s.city IS NOT NULL AND s.city != ''
-            GROUP BY s.city
-            ORDER BY cnt DESC
-            LIMIT 5;
+            SELECT s.city, COUNT(ua.id) as cnt FROM user_actions ua JOIN sponsors s ON ua.user_id = s.user_id WHERE s.city IS NOT NULL AND s.city != '' GROUP BY s.city ORDER BY cnt DESC LIMIT 5;
         """)
         result["city_activity"] = cur.fetchall()
 
@@ -465,5 +397,4 @@ def _get_report_data_sync() -> dict:
 
 
 async def get_report_data() -> dict:
-    """Асинхронно собирает данные для отчёта."""
     return await asyncio.to_thread(_get_report_data_sync)
