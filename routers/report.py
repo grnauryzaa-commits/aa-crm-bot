@@ -88,9 +88,9 @@ async def cmd_report(message: types.Message):
     if total_users:
         text += f"✅ Конверсия:  <b>{sponsor_pct:.0f}%</b> из {total_users} стали спонсорами\n"
 
-    # --- 6. НОВЫЙ БЛОК: Активность по кнопкам ---
+    # --- 6. Блок: Активность по категориям ---
     if data.get("action_types"):
-        text += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n🔥 <b>ЧТО НАЖИМАЮТ (с момента обновления)</b>\n"
+        text += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n🔥 <b>ЧТО НАЖИМАЮТ (категории)</b>\n"
         total_act = data.get("total_actions", 0)
         for action_type, cnt in data["action_types"]:
             names = {
@@ -104,13 +104,21 @@ async def cmd_report(message: types.Message):
             pct = (cnt / total_act * 100) if total_act else 0
             text += f"   {names.get(action_type, action_type)}: <b>{cnt}</b> ({pct:.0f}%)\n"
 
-    # --- 7. НОВЫЙ БЛОК: Активность городов (спонсоры) ---
+    # --- 7. Блок: Детальный топ нажатий (ВОТ ОН) ---
+    if data.get("top_actions"):
+        text += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n🔥 <b>ТОП КОНКРЕТНЫХ НАЖАТИЙ</b>\n"
+        total_act = data.get("total_actions", 0)
+        for action_type, action_name, cnt in data["top_actions"]:
+            pct = (cnt / total_act * 100) if total_act else 0
+            text += f"   • {action_name}: <b>{cnt}</b> ({pct:.1f}%)\n"
+
+    # --- 8. Блок: Активность городов ---
     if data.get("city_activity"):
         text += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏙 <b>АКТИВНОСТЬ ПО ГОРОДАМ (СПОНСОРЫ)</b>\n"
         for city, cnt in data["city_activity"]:
             text += f"   {city}: <b>{cnt} действий</b>\n"
 
-    # --- 8. Блок возраста (в самом конце, чтобы не мешал) ---
+    # --- 9. Блок: Возраст ---
     if data.get("ages"):
         text += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n🎂 <b>ВОЗРАСТ СПОНСОРОВ</b>\n"
         for age_group, cnt in data["ages"]:
