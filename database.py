@@ -15,7 +15,8 @@ async def init_db():
     cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id BIGINT PRIMARY KEY,
-                language VARCHAR(10) DEFAULT 'ru'
+                language VARCHAR(10) DEFAULT 'ru',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
     cur.execute("""
@@ -49,7 +50,8 @@ async def init_db():
     cur.execute("ALTER TABLE sponsors ADD COLUMN IF NOT EXISTS program_info TEXT;")
     cur.execute("ALTER TABLE sponsor_drafts ADD COLUMN IF NOT EXISTS program_info TEXT;")
     cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS language VARCHAR(10) DEFAULT 'ru';")
-    
+    cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;")
+
     cur.execute("""
             CREATE TABLE IF NOT EXISTS reflections_archive (
                 day INT, month INT, title VARCHAR(255), text TEXT, PRIMARY KEY (day, month)
@@ -194,11 +196,10 @@ def _get_report_data_sync() -> dict:
         cur.execute("SELECT gender, COUNT(*) FROM sponsors WHERE gender IS NOT NULL AND gender != '' GROUP BY gender;"); result["genders"] = cur.fetchall()
         cur.execute("SELECT city, COUNT(*) FROM sponsors WHERE city IS NOT NULL AND city != '' GROUP BY city ORDER BY COUNT(*) DESC LIMIT 10;"); result["cities"] = cur.fetchall()
         
-        # РОСТ ПО МЕСЯЦАМ (ПО ПЕРВОМУ СООБЩЕНИЮ - ТАК БЫЛО РАНЬШЕ)
+        # РОСТ ПО МЕСЯЦАМ (ТЕПЕРЬ ПО ДАТЕ РЕГИСТРАЦИИ)
         cur.execute("""
-            WITH first_messages AS (SELECT user_id, MIN(timestamp) as first_seen FROM dialog_history GROUP BY user_id)
-            SELECT TO_CHAR(first_seen, 'TMMonth YYYY') as month_name, TO_CHAR(first_seen, 'YYYY-MM') as month_num, COUNT(*) as cnt
-            FROM first_messages GROUP BY month_name, month_num ORDER BY month_num DESC LIMIT 12;
+            SELECT TO_CHAR(created_at, 'TMMonth YYYY') as month_name, TO_CHAR(created_at, 'YYYY-MM') as month_num, COUNT(*) as cnt
+            FROM users GROUP BY month_name, month_num ORDER BY month_num DESC LIMIT 12;
         """)
         result["monthly_users"] = [(row[0], row[2]) for row in cur.fetchall()]
 
