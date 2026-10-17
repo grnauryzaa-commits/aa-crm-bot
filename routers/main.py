@@ -8,7 +8,7 @@ from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from config import TOKEN
-from database import init_db
+from database import init_db, _init_actions_table_sync  # ← ДОБАВЛЕНО
 from routers.admin import router as admin_router
 from routers.ai_chat import router as ai_chat_router
 from routers.form import router as form_router
@@ -21,6 +21,7 @@ from routers.reflections import (
     send_evening_prayer_to_channel,
     send_morning_prayer_to_channel,
 )
+from routers.report import router as report_router  # ← ДОБАВЛЕНО
 from routers.schedules import router as schedules_router
 from routers.sponsors import router as sponsors_router
 from routers.start import router as start_router
@@ -48,6 +49,7 @@ async def send_bilingual_evening_prayer(bot):
 
 async def main():
     await init_db()
+    _init_actions_table_sync()  # ← ДОБАВЛЕНО
 
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
@@ -60,9 +62,10 @@ async def main():
         admin_router,
         help_router,
         schedules_router,
-        literature_router,      # ← ВАЖНО: литература ВЫШЕ AI-чата
-        ai_chat_router,         # ← AI-чат ловит всё — должен быть ниже
-        get_file_id_router,     # ← временный, всегда последним
+        literature_router,
+        report_router,          # ← ДОБАВЛЕНО (до ai_chat)
+        ai_chat_router,
+        get_file_id_router,
     )
 
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")

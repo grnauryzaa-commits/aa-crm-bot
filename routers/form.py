@@ -13,7 +13,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 from config import ADMINS, DATABASE_URL
-from database import get_user_language, save_sponsor_draft
+from database import get_user_language, save_sponsor_draft, log_user_action  # ← ДОБАВЛЕНО
 from routers.states import SponsorForm
 
 router = Router()
@@ -114,6 +114,9 @@ def get_fallback_menu_keyboard(lang: str = "ru"):
 )
 async def start_form_text(message: Message, state: FSMContext):
   try:
+    await log_user_action(  # ← ДОБАВЛЕНО
+        message.from_user.id, "sponsor_form", "начал анкету"
+    )
     lang = await get_user_language(message.from_user.id)
     if message.text == "➕ Демеуші болу":
       lang = "kk"
@@ -295,6 +298,10 @@ async def process_phone(message: Message, state: FSMContext, bot: Bot):
     except Exception as e:
       print(f"Не удалось отправить админу {admin_id}: {e}")
 
+  await log_user_action(  # ← ДОБАВЛЕНО
+      tg_id, "sponsor_form", "завершил анкету"
+  )
+
   await message.answer(
       t["success_draft"], reply_markup=get_fallback_menu_keyboard(lang)
   )
@@ -306,6 +313,10 @@ async def approve_sponsor(callback: CallbackQuery, bot: Bot):
   target_user_id = int(callback.data.split("_")[2])
   lang = await get_user_language(target_user_id)
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await log_user_action(  # ← ДОБАВЛЕНО
+      callback.from_user.id, "admin", "одобрил анкету"
+  )
 
   try:
     conn = psycopg2.connect(DATABASE_URL)
@@ -359,6 +370,10 @@ async def decline_sponsor(callback: CallbackQuery, bot: Bot):
   target_user_id = int(callback.data.split("_")[2])
   lang = await get_user_language(target_user_id)
   t = FORM_TEXTS.get(lang, FORM_TEXTS["ru"])
+
+  await log_user_action(  # ← ДОБАВЛЕНО
+      callback.from_user.id, "admin", "отклонил анкету"
+  )
 
   try:
     conn = psycopg2.connect(DATABASE_URL)

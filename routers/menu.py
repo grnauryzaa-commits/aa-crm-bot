@@ -5,7 +5,7 @@ from aiogram import F, Router, types
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from config import DATABASE_URL, SERVANT_CHAT_IDS
-from database import get_user_language, set_user_language
+from database import get_user_language, set_user_language, log_user_action  # ← ДОБАВЛЕНО
 from routers.reflections import (
     EVENING_PRAYER_TEXT_KK,
     EVENING_PRAYER_TEXT_RU,
@@ -133,6 +133,7 @@ def get_main_menu_keyboard(lang="ru"):
 @router.message(F.chat.type == "private", Command("start"))
 async def cmd_start(message: types.Message, state: FSMContext):
     await state.clear()
+    await log_user_action(message.from_user.id, "command", "/start")  # ← ДОБАВЛЕНО
     lang = await get_user_language(message.from_user.id)
     if not lang:
         lang = "ru"
@@ -151,6 +152,7 @@ async def cmd_start(message: types.Message, state: FSMContext):
 )
 async def cmd_main_menu(message: types.Message, state: FSMContext):
     await state.clear()
+    await log_user_action(message.from_user.id, "menu", "Главное меню")  # ← ДОБАВЛЕНО
     lang = await get_user_language(message.from_user.id)
     if not lang:
         lang = "ru"
@@ -166,6 +168,7 @@ async def cmd_main_menu(message: types.Message, state: FSMContext):
     F.text.in_({"🌐 Язык: Русский", "🌐 Тіл: Қазақша"}),
 )
 async def language_menu_handler(message: types.Message):
+    await log_user_action(message.from_user.id, "menu", "Смена языка")  # ← ДОБАВЛЕНО
     lang = await get_user_language(message.from_user.id)
     if not lang:
         lang = "ru"
@@ -192,6 +195,7 @@ async def set_language_callback(callback: types.CallbackQuery):
         await callback.answer()
         return
     lang = callback.data.split("_")[2]
+    await log_user_action(callback.from_user.id, "button", f"выбран язык: {lang}")  # ← ДОБАВЛЕНО
     await set_user_language(callback.from_user.id, lang)
     t = TEXTS[lang]
     await callback.message.answer(
@@ -210,6 +214,7 @@ async def set_language_callback(callback: types.CallbackQuery):
 )
 async def become_sponsors_menu_direct(message: types.Message, state: FSMContext):
     await state.clear()
+    await log_user_action(message.from_user.id, "menu", "Стать спонсором")  # ← ДОБАВЛЕНО
     user_id = message.from_user.id
 
     lang = await get_user_language(user_id)
@@ -255,6 +260,7 @@ async def become_sponsors_menu_direct(message: types.Message, state: FSMContext)
     F.text.in_({"📖 Ежедневные размышления", "📖 Күнделікті ой-толғаулар"}),
 )
 async def show_daily_reflection(message: types.Message):
+    await log_user_action(message.from_user.id, "menu", "Ежедневные размышления")  # ← ДОБАВЛЕНО
     today = datetime.now()
     lang = await get_user_language(message.from_user.id)
     if not lang:
@@ -327,6 +333,7 @@ async def show_daily_reflection(message: types.Message):
     F.chat.type == "private", F.text.in_({"🙏 11 Шаг", "🙏 11 Қадам"})
 )
 async def step_eleven_menu(message: types.Message):
+    await log_user_action(message.from_user.id, "menu", "11 Шаг")  # ← ДОБАВЛЕНО
     lang = await get_user_language(message.from_user.id)
     if not lang:
         lang = "ru"
@@ -357,6 +364,7 @@ async def send_morning_callback(callback: types.CallbackQuery):
     if callback.message.chat.type != "private":
         await callback.answer()
         return
+    await log_user_action(callback.from_user.id, "button", "Утренняя молитва")  # ← ДОБАВЛЕНО
     lang = await get_user_language(callback.from_user.id)
     if not lang:
         lang = "ru"
@@ -370,6 +378,7 @@ async def send_evening_callback(callback: types.CallbackQuery):
     if callback.message.chat.type != "private":
         await callback.answer()
         return
+    await log_user_action(callback.from_user.id, "button", "Вечерняя молитва")  # ← ДОБАВЛЕНО
     lang = await get_user_language(callback.from_user.id)
     if not lang:
         lang = "ru"
@@ -382,6 +391,7 @@ async def send_evening_callback(callback: types.CallbackQuery):
     F.chat.type == "private", F.text.in_({"🤝 Спонсоры", "🤝 Демеушілер"})
 )
 async def sponsors_menu_handler_msg(message: types.Message):
+    await log_user_action(message.from_user.id, "menu", "Спонсоры")  # ← ДОБАВЛЕНО
     lang = await get_user_language(message.from_user.id)
     if not lang:
         lang = "ru"
@@ -438,6 +448,7 @@ async def sponsors_menu_handler_cb(callback: types.CallbackQuery):
     F.chat.type == "private", F.text.in_({"❓ Помощь", "❓ Көмек"})
 )
 async def help_section_handler(message: types.Message):
+    await log_user_action(message.from_user.id, "menu", "Помощь")  # ← ДОБАВЛЕНО
     lang = await get_user_language(message.from_user.id)
     if not lang:
         lang = "ru"
@@ -487,6 +498,7 @@ async def call_servant_callback(callback: types.CallbackQuery):
     if callback.message.chat.type != "private":
         await callback.answer()
         return
+    await log_user_action(callback.from_user.id, "button", "Позвать живого служащего")  # ← ДОБАВЛЕНО
     user = callback.from_user
     lang = await get_user_language(user.id)
     if not lang:

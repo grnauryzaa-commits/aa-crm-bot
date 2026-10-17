@@ -270,3 +270,172 @@ def _get_recent_history_sync(user_id: int, limit: int = 6) -> list:
 
 async def get_recent_history(user_id: int, limit: int = 6) -> list:
   return await asyncio.to_thread(_get_recent_history_sync, user_id, limit)
+
+
+
+# ============================================================
+# ЛОГИРОВАНИЕ ДЕЙСТВИЙ И ОТЧЁТ
+# ============================================================
+
+def _init_actions_table_sync():
+    """Создаёт таблицу user_actions, если её нет."""
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_actions (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                action_type VARCHAR(50) NOT NULL,
+                action_name VARCHAR(150) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_actions_created "
+            "ON user_actions (created_at);"
+        )
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_user_actions_name "
+            "ON user_actions (action_name);"
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Ошибка создания user_actions: {e}")
+
+
+def _log_user_action_sync(user_id: int, action_type: str, action_name: str):
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO user_actions (user_id, action_type, action_name)"
+            " VALUES (%s, %s, %s);",
+            (user_id, action_type, action_name),
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Ошибка логирования действия: {e}")
+
+
+async def log_user_action(user_id: int, action_type: str, action_name: str):
+    """Асинхронно записывает действие пользователя в БД."""
+    await asyncio.to_thread(
+        _log_user_action_sync, user_id, action_type, action_name
+    )
+
+
+def _get_report_data_sync() -> dict:
+    """Собирает все данные для отчёта одним запросом."""
+    result = {
+        "total_users": 0,
+        "active_week": 0,
+        "total_actions": 0,
+        "ai_week": 0,
+        "top_actions": [],
+        "total_sponsors": 0,
+        "drafts_count": 0,
+        "cities": [],
+        "genders": [],
+        "ages": [],
+    }
+
+    try:
+        conn = psycopg2.connect(DB_URL)
+        cur = conn.cursor()
+
+        # Всего пользователей
+        cur.execute("SELECT COUNT(*) FROM users;")
+        result["total_users"] = cur.fetchone()[0] or 0
+
+        # Активных за 7 дней
+        cur.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM user_actions "
+            "WHERE created_at >= NOW() - INTERVAL '7 days';"
+        )
+        result["active_week"] = cur.fetchone()[0] or 0
+
+        # Всего действий
+        cur.execute("SELECT COUNT(*) FROM user_actions;")
+        result["total_actions"] = cur.fetchone()[0] or 0
+
+        # Запросов к ИИ за 7 дней
+        cur.execute(
+            "SELECT COUNT(*) FROM user_actions "
+            "WHERE action_type = 'ai_chat' "
+            "AND created_at >= NOW() - INTERVAL '7 days';"
+        )
+        result["ai_week"] = cur.fetchone()[0] or 0
+
+        # Топ-15 действий
+        cur.execute("""
+            SELECT action_type, action_name, COUNT(*) as cnt
+            FROM user_actions
+            GROUP BY action_type, action_name
+            ORDER BY cnt DESC
+            LIMIT 15;
+        """)
+        result["top_actions"] = cur.fetchall()
+
+        # Спонсоры
+        cur.execute("SELECT COUNT(*) FROM sponsors;")
+        result["total_sponsors"] = cur.fetchone()[0] or 0
+
+        cur.execute("SELECT COUNT(*) FROM sponsor_drafts;")
+        result["drafts_count"] = cur.fetchone()[0] or 0
+
+        # Города спонсоров
+        cur.execute("""
+            SELECT city, COUNT(*)
+            FROM sponsors
+            WHERE city IS NOT NULL AND city != ''
+            GROUP BY city
+            ORDER BY COUNT(*) DESC
+            LIMIT 10;
+        """)
+        result["cities"] = cur.fetchall()
+
+        # Пол спонсоров
+        cur.execute("""
+            SELECT gender, COUNT(*)
+            FROM sponsors
+            WHERE gender IS NOT NULL AND gender != ''
+            GROUP BY gender;
+        """)
+        result["genders"] = cur.fetchall()
+
+        # Возрастные группы
+        cur.execute("""
+            SELECT
+                CASE
+                    WHEN age BETWEEN 18 AND 25 THEN '18-25'
+                    WHEN age BETWEEN 26 AND 35 THEN '26-35'
+                    WHEN age BETWEEN 36 AND 45 THEN '36-45'
+                    WHEN age BETWEEN 46 AND 55 THEN '46-55'
+                    WHEN age BETWEEN 56 AND 65 THEN '56-65'
+                    WHEN age > 65 THEN '65+'
+                    ELSE 'не указан'
+                END AS age_group,
+                COUNT(*)
+            FROM sponsors
+            WHERE age IS NOT NULL
+            GROUP BY age_group
+            ORDER BY COUNT(*) DESC;
+        """)
+        result["ages"] = cur.fetchall()
+
+        cur.close()
+        conn.close()
+    except Exception as e:
+        logging.error(f"Ошибка сбора данных отчёта: {e}")
+
+    return result
+
+
+async def get_report_data() -> dict:
+    """Асинхронно собирает данные для отчёта."""
+    return await asyncio.to_thread(_get_report_data_sync)  
