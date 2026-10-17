@@ -272,7 +272,6 @@ async def get_recent_history(user_id: int, limit: int = 6) -> list:
   return await asyncio.to_thread(_get_recent_history_sync, user_id, limit)
 
 
-
 # ============================================================
 # ЛОГИРОВАНИЕ ДЕЙСТВИЙ И ОТЧЁТ
 # ============================================================
@@ -332,65 +331,45 @@ async def log_user_action(user_id: int, action_type: str, action_name: str):
 def _get_report_data_sync() -> dict:
     """Собирает все данные для отчёта одним запросом."""
     result = {
-        "total_users": 0,
-        "active_week": 0,
-        "total_actions": 0,
-        "ai_week": 0,
-        "top_actions": [],
-        "total_sponsors": 0,
-        "drafts_count": 0,
-        "cities": [],
-        "genders": [],
-        "ages": [],
-        "monthly_users": [],  # ← ДОБАВЛЕНО
-        "action_types": [],   # ← ДОБАВЛЕНО
+        "total_users": 0, "active_week": 0, "total_actions": 0,
+        "ai_week": 0, "top_actions": [], "total_sponsors": 0,
+        "drafts_count": 0, "cities": [], "genders": [], "ages": [],
+        "monthly_users": [], "action_types": [],
+        "city_activity": [],
+        "lang_ru": 0, "lang_kk": 0,
     }
 
     try:
         conn = psycopg2.connect(DB_URL)
         cur = conn.cursor()
 
-        # Всего пользователей
+        # 1. Пользователи
         cur.execute("SELECT COUNT(*) FROM users;")
         result["total_users"] = cur.fetchone()[0] or 0
 
-        # Активных за 7 дней
-        cur.execute(
-            "SELECT COUNT(DISTINCT user_id) FROM user_actions "
-            "WHERE created_at >= NOW() - INTERVAL '7 days';"
-        )
-        result["active_week"] = cur.fetchone()[0] or 0
-
-        # Всего действий
-        cur.execute("SELECT COUNT(*) FROM user_actions;")
-        result["total_actions"] = cur.fetchone()[0] or 0
-
-        # Запросов к ИИ за 7 дней
-        cur.execute(
-            "SELECT COUNT(*) FROM user_actions "
-            "WHERE action_type = 'ai_chat' "
-            "AND created_at >= NOW() - INTERVAL '7 days';"
-        )
-        result["ai_week"] = cur.fetchone()[0] or 0
-
-        # Топ-15 действий
-        cur.execute("""
-            SELECT action_type, action_name, COUNT(*) as cnt
-            FROM user_actions
-            GROUP BY action_type, action_name
-            ORDER BY cnt DESC
-            LIMIT 15;
-        """)
-        result["top_actions"] = cur.fetchall()
-
-        # Спонсоры
+        # 2. Спонсоры и черновики
         cur.execute("SELECT COUNT(*) FROM sponsors;")
         result["total_sponsors"] = cur.fetchone()[0] or 0
 
         cur.execute("SELECT COUNT(*) FROM sponsor_drafts;")
         result["drafts_count"] = cur.fetchone()[0] or 0
 
-        # Города спонсоров
+        # 3. Языки интерфейса
+        cur.execute("SELECT language, COUNT(*) FROM users GROUP BY language;")
+        langs = dict(cur.fetchall())
+        result["lang_ru"] = langs.get("ru", 0)
+        result["lang_kk"] = langs.get("kk", 0)
+
+        # 4. Пол спонсоров
+        cur.execute("""
+            SELECT gender, COUNT(*)
+            FROM sponsors
+            WHERE gender IS NOT NULL AND gender != ''
+            GROUP BY gender;
+        """)
+        result["genders"] = cur.fetchall()
+
+        # 5. Города спонсоров
         cur.execute("""
             SELECT city, COUNT(*)
             FROM sponsors
@@ -401,16 +380,25 @@ def _get_report_data_sync() -> dict:
         """)
         result["cities"] = cur.fetchall()
 
-        # Пол спонсоров
+        # 6. Рост по месяцам (по первому сообщению в dialog_history)
         cur.execute("""
-            SELECT gender, COUNT(*)
-            FROM sponsors
-            WHERE gender IS NOT NULL AND gender != ''
-            GROUP BY gender;
+            WITH first_messages AS (
+                SELECT user_id, MIN(timestamp) as first_seen
+                FROM dialog_history
+                GROUP BY user_id
+            )
+            SELECT 
+                TO_CHAR(first_seen, 'TMMonth YYYY') as month_name,
+                TO_CHAR(first_seen, 'YYYY-MM') as month_num,
+                COUNT(*) as cnt
+            FROM first_messages
+            GROUP BY month_name, month_num
+            ORDER BY month_num DESC
+            LIMIT 12;
         """)
-        result["genders"] = cur.fetchall()
+        result["monthly_users"] = [(row[0], row[2]) for row in cur.fetchall()]
 
-        # Возрастные группы
+        # 7. Возрастные группы
         cur.execute("""
             SELECT
                 CASE
@@ -430,20 +418,24 @@ def _get_report_data_sync() -> dict:
         """)
         result["ages"] = cur.fetchall()
 
-        # 🔥 НОВОЕ: Новые пользователи по месяцам (по команде /start)
-        cur.execute("""
-            SELECT 
-                TO_CHAR(created_at, 'YYYY-MM') as month,
-                COUNT(DISTINCT user_id) as cnt
-            FROM user_actions
-            WHERE action_type = 'command' AND action_name = '/start'
-            GROUP BY month
-            ORDER BY month DESC
-            LIMIT 12;
-        """)
-        result["monthly_users"] = cur.fetchall()
+        # 8. Активность
+        cur.execute("SELECT COUNT(*) FROM user_actions;")
+        result["total_actions"] = cur.fetchone()[0] or 0
 
-        # 🔥 НОВОЕ: Группировка действий по типам (меню, кнопки, ИИ, анкеты)
+        cur.execute(
+            "SELECT COUNT(*) FROM user_actions "
+            "WHERE action_type = 'ai_chat' "
+            "AND created_at >= NOW() - INTERVAL '7 days';"
+        )
+        result["ai_week"] = cur.fetchone()[0] or 0
+
+        cur.execute(
+            "SELECT COUNT(DISTINCT user_id) FROM user_actions "
+            "WHERE created_at >= NOW() - INTERVAL '7 days';"
+        )
+        result["active_week"] = cur.fetchone()[0] or 0
+
+        # 9. Группировка действий
         cur.execute("""
             SELECT action_type, COUNT(*) as cnt
             FROM user_actions
@@ -451,6 +443,18 @@ def _get_report_data_sync() -> dict:
             ORDER BY cnt DESC;
         """)
         result["action_types"] = cur.fetchall()
+
+        # 10. Активность по городам
+        cur.execute("""
+            SELECT s.city, COUNT(ua.id) as cnt
+            FROM user_actions ua
+            JOIN sponsors s ON ua.user_id = s.user_id
+            WHERE s.city IS NOT NULL AND s.city != ''
+            GROUP BY s.city
+            ORDER BY cnt DESC
+            LIMIT 5;
+        """)
+        result["city_activity"] = cur.fetchall()
 
         cur.close()
         conn.close()
