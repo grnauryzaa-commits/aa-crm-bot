@@ -342,6 +342,8 @@ def _get_report_data_sync() -> dict:
         "cities": [],
         "genders": [],
         "ages": [],
+        "monthly_users": [],  # ← ДОБАВЛЕНО
+        "action_types": [],   # ← ДОБАВЛЕНО
     }
 
     try:
@@ -428,6 +430,28 @@ def _get_report_data_sync() -> dict:
         """)
         result["ages"] = cur.fetchall()
 
+        # 🔥 НОВОЕ: Новые пользователи по месяцам (по команде /start)
+        cur.execute("""
+            SELECT 
+                TO_CHAR(created_at, 'YYYY-MM') as month,
+                COUNT(DISTINCT user_id) as cnt
+            FROM user_actions
+            WHERE action_type = 'command' AND action_name = '/start'
+            GROUP BY month
+            ORDER BY month DESC
+            LIMIT 12;
+        """)
+        result["monthly_users"] = cur.fetchall()
+
+        # 🔥 НОВОЕ: Группировка действий по типам (меню, кнопки, ИИ, анкеты)
+        cur.execute("""
+            SELECT action_type, COUNT(*) as cnt
+            FROM user_actions
+            GROUP BY action_type
+            ORDER BY cnt DESC;
+        """)
+        result["action_types"] = cur.fetchall()
+
         cur.close()
         conn.close()
     except Exception as e:
@@ -438,4 +462,4 @@ def _get_report_data_sync() -> dict:
 
 async def get_report_data() -> dict:
     """Асинхронно собирает данные для отчёта."""
-    return await asyncio.to_thread(_get_report_data_sync)  
+    return await asyncio.to_thread(_get_report_data_sync)
