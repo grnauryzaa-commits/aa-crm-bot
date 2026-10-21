@@ -35,9 +35,13 @@ SCHEDULE_TEXTS = {
             " Сб 17:00\n• <b>ВДА</b>: уточнять по контактам"
         ),
         "tim": (
-            "🏢 <b>Тимирязева 42, корпус 23, каб 102</b>\n\n• <b>Друзья"
-            " Билла</b>: Вт, Чт 12:00\n• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс"
-            " 15:00"
+            "🏢 <b>Тимирязева 42, корпус 23, каб 102</b>\n\n"
+            "• <b>Наурыз</b>: Вт, Чт, Пт, Сб 19:00, Вс 15:00"
+        ),
+        "bukhar": (
+            "🏢 <b>Бухар Жырау 66, 3 этаж</b> (Zen Studio)\n\n"
+            "• <b>Друзья Билла</b>: Вт, Чт 12:00-13:00\n"
+            "• Тел: +7 747-563-75-87"
         ),
         "kaskelen": (
             "🏢 <b>ТД «Нур-Жанат» (г. Каскелен)</b>\n\n• <b>Группа «Туран»</b>: Пн,"
@@ -54,7 +58,8 @@ SCHEDULE_TEXTS = {
         "btn_online": "🌐 Онлайн группы",
         "btn_zhub": "📍 Алматы: Жубанова 3а",
         "btn_zenk": "📍 Алматы: Зенкова 24",
-        "btn_tim": "📍 Алматы: Тимирязева 42",
+        "btn_tim": "📍 Алматы: Тимирязева 42 (Наурыз)",
+        "btn_bukhar": "📍 Алматы: Бухар Жырау 66",
         "btn_kaskelen": "📍 Каскелен: Нур-Жанат",
         "btn_other": "📍 Другие локации",
     },
@@ -89,9 +94,13 @@ SCHEDULE_TEXTS = {
             " арқылы нақтылау"
         ),
         "tim": (
-            "🏢 <b>Тимирязев көшесі, 42, 23-корпус, 102-каб.</b>\n\n• <b>Друзья"
-            " Билла</b>: Сей, Бей 12:00\n• <b>Наурыз</b>: Сей, Бей, Жұм, Сен 19:00,"
-            " Жек 15:00"
+            "🏢 <b>Тимирязев көшесі, 42, 23-корпус, 102-каб.</b>\n\n"
+            "• <b>Наурыз</b>: Сей, Бей, Жұм, Сен 19:00, Жек 15:00"
+        ),
+        "bukhar": (
+            "🏢 <b>Бұхар Жырау көшесі, 66, 3 қабат</b> (Zen Studio)\n\n"
+            "• <b>Друзья Билла</b>: Сей, Бей 12:00-13:00\n"
+            "• Тел: +7 747-563-75-87"
         ),
         "kaskelen": (
             "🏢 <b>«Нұр-Жанат» СҮ (Қаскелен қ.)</b>\n\n• <b>«Тұран» тобы</b>: Дүй,"
@@ -108,7 +117,8 @@ SCHEDULE_TEXTS = {
         "btn_online": "🌐 Онлайн топтар",
         "btn_zhub": "📍 Алматы: Жұбанов 3а",
         "btn_zenk": "📍 Алматы: Зенков 24",
-        "btn_tim": "📍 Алматы: Тимирязев 42",
+        "btn_tim": "📍 Алматы: Тимирязев 42 (Наурыз)",
+        "btn_bukhar": "📍 Алматы: Бұхар Жырау 66",
         "btn_kaskelen": "📍 Қаскелен: Нұр-Жанат",
         "btn_other": "📍 Басқа орындар",
     },
@@ -123,6 +133,7 @@ def get_schedule_menu_kb(lang="ru"):
           [InlineKeyboardButton(text=t["btn_zhub"], callback_data="s_zhub")],
           [InlineKeyboardButton(text=t["btn_zenk"], callback_data="s_zenk")],
           [InlineKeyboardButton(text=t["btn_tim"], callback_data="s_tim")],
+          [InlineKeyboardButton(text=t["btn_bukhar"], callback_data="s_bukhar")],
           [
               InlineKeyboardButton(
                   text=t["btn_kaskelen"], callback_data="s_kaskelen"
@@ -212,6 +223,21 @@ async def callback_schedule(callback: types.CallbackQuery):
                 url=(
                     "https://2gis.kz/almaty/geo/9430047374971407/76.904347,43.217837"
                 ),
+            )
+        ],
+        [InlineKeyboardButton(text=t["back"], callback_data="s_back")],
+    ]
+    await callback.message.edit_text(
+        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML"
+    )
+
+  elif data == "s_bukhar":
+    text = t["bukhar"] + t["help_text"]
+    kb = [
+        [
+            InlineKeyboardButton(
+                text=t["2gis"],
+                url="https://2gis.kz/almaty/geo/9430047375014586",
             )
         ],
         [InlineKeyboardButton(text=t["back"], callback_data="s_back")],
