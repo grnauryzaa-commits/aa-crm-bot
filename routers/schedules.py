@@ -26,26 +26,6 @@ TEXTS = {
 
 CACHED_DATA = None
 
-def clean_text(text):
-    if not text:
-        return ""
-    # Убираем обрывки HTML-тегов
-    text = text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
-    # Убираем множественные пробелы
-    text = re.sub(r'[ \t]+', ' ', text)
-    # Добавляем пробел между цифрой и буквой
-    text = re.sub(r'(\d)([А-ЯЁA-Z])', r'\1 \2', text)
-    
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
-    result = []
-    for line in lines:
-        if any(line.startswith(prefix) for prefix in ["📍", "⏰", "📞", "💻", "🔑", "Как нас найти", "Формат", "2Gis", "Telegram:", "Zoom:", "WhatsApp:", "Телефон:"]):
-            result.append(f"\n{line}")
-        else:
-            result.append(f" {line}")
-    
-    return "".join(result).strip()
-
 def fetch_schedule_sync():
     global CACHED_DATA
     if CACHED_DATA:
@@ -66,10 +46,10 @@ def fetch_schedule_sync():
         for el in soup.find_all(['h2', 'h3', 'p']):
             if el.name == 'h2':
                 if current_city and current_group_name:
-                    info_clean = clean_text("\n".join(current_info))
-                    # Убираем <b> и </b> из названия группы, чтобы не ломать HTML
-                    name_clean = current_group_name.replace("<b>", "").replace("</b>", "")
-                    data[current_city].append(f"• {name_clean}{info_clean}")
+                    # Сохраняем группу с HTML-форматированием
+                    info_text = "\n".join(current_info)
+                    info_text = info_text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+                    data[current_city].append(f"• <b>{current_group_name}</b>\n{info_text.strip()}")
                 
                 text = el.text.strip()
                 if "Где проходят" in text or "Выбери свою" in text or not text:
@@ -87,9 +67,9 @@ def fetch_schedule_sync():
                     continue
                 
                 if current_group_name:
-                    info_clean = clean_text("\n".join(current_info))
-                    name_clean = current_group_name.replace("<b>", "").replace("</b>", "")
-                    data[current_city].append(f"• {name_clean}{info_clean}")
+                    info_text = "\n".join(current_info)
+                    info_text = info_text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+                    data[current_city].append(f"• <b>{current_group_name}</b>\n{info_text.strip()}")
                 
                 current_group_name = el.text.strip()
                 current_info = []
@@ -104,9 +84,9 @@ def fetch_schedule_sync():
                     current_info.append(info)
 
         if current_city and current_group_name:
-            info_clean = clean_text("\n".join(current_info))
-            name_clean = current_group_name.replace("<b>", "").replace("</b>", "")
-            data[current_city].append(f"• {name_clean}{info_clean}")
+            info_text = "\n".join(current_info)
+            info_text = info_text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+            data[current_city].append(f"• <b>{current_group_name}</b>\n{info_text.strip()}")
 
         data = {k: v for k, v in data.items() if v}
         CACHED_DATA = data
@@ -169,11 +149,12 @@ async def callback_schedule(callback: types.CallbackQuery):
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
+        # Отправляем группу целиком, чтобы HTML-теги не рвались
         full_text = f"🏙 <b>{city_name}</b>\n\n"
         current_message = full_text
         
         for group in groups:
-            # Жестко проверяем лимит (4000 символов, чтобы точно влезло)
+            # Если сообщение станет больше 3900 символов, отправляем текущее и начинаем новое
             if len(current_message) + len(group) > 3900:
                 await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
                 current_message = ""
@@ -182,7 +163,6 @@ async def callback_schedule(callback: types.CallbackQuery):
         
         if current_message:
             current_message += t["help_text"]
-            # Проверка, чтобы help_text не превысил лимит
             if len(current_message) > 4000:
                 current_message = current_message[:4000]
             await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
