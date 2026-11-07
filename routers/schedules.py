@@ -27,16 +27,31 @@ TEXTS = {
 CACHED_DATA = None
 
 def clean_text(text):
-    """Очищает текст от лишних пробелов, пустых строк и мусора"""
+    """Очищает текст, сохраняя переносы строк для читаемости"""
     if not text:
         return ""
-    # Заменяем множественные пробелы и переносы на один пробел
-    text = re.sub(r'\s+', ' ', text)
-    # Добавляем пробел перед заглавными буквами, если они слиплись с цифрами
-    text = re.sub(r'(\d)([А-ЯЁA-Z])', r'\1 \2', text)
-    # Убираем мусорные ссылки в тексте (типа https://...)
+    # Убираем обрывки HTML-тегов, которые остаются на сайте
+    text = text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+    # Убираем мусорные ссылки
     text = re.sub(r'https?://\S+', '', text)
-    return text.strip()
+    # Убираем множественные пробелы, но НЕ переносы строк
+    text = re.sub(r'[ \t]+', ' ', text)
+    # Добавляем пробел между цифрой и буквой (19:00cуббота -> 19:00 cуббота)
+    text = re.sub(r'(\d)([А-ЯЁA-Z])', r'\1 \2', text)
+    
+    # Разбиваем на строки, убираем пустые
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    
+    result = []
+    for line in lines:
+        # Если строка начинается с ключевых слов или эмодзи, ставим перенос строки перед ней
+        if any(line.startswith(prefix) for prefix in ["📍", "⏰", "📞", "💻", "🔑", "Как нас найти", "Формат", "2Gis", "Воскресенье"]):
+            result.append(f"\n{line}")
+        else:
+            result.append(f" {line}")
+    
+    final_text = "".join(result).strip()
+    return final_text
 
 def fetch_schedule_sync():
     global CACHED_DATA
@@ -60,14 +75,13 @@ def fetch_schedule_sync():
                 if current_city and current_group_name:
                     info_clean = clean_text("\n".join(current_info))
                     if info_clean:
-                        data[current_city].append(f"• <b>{current_group_name}</b>\n{info_clean}")
+                        data[current_city].append(f"• <b>{current_group_name}</b>{info_clean}")
                 
                 text = el.text.strip()
                 if "Где проходят" in text or "Выбери свою" in text or not text:
                     current_city = None
                     continue
                 
-                # Делаем первую букву заглавной
                 current_city = text.capitalize()
                 current_group_name = None
                 current_info = []
@@ -81,7 +95,7 @@ def fetch_schedule_sync():
                 if current_group_name:
                     info_clean = clean_text("\n".join(current_info))
                     if info_clean:
-                        data[current_city].append(f"• <b>{current_group_name}</b>\n{info_clean}")
+                        data[current_city].append(f"• <b>{current_group_name}</b>{info_clean}")
                 
                 current_group_name = el.text.strip()
                 current_info = []
@@ -93,14 +107,12 @@ def fetch_schedule_sync():
                 text = el.text.strip()
                 if any(word in text for word in ["Адрес", "Время", "Контакты", "Zoom", "Пароль", "Телефон", "Как нас найти", "Формат"]):
                     info = text.replace("Адрес:", "📍 Адрес:").replace("Время:", "⏰ Время:").replace("Контакты:", "📞 Контакты:").replace("Площадка Zoom:", "💻 Zoom:").replace("Пароль по номеру:", "🔑 Пароль:").replace("Чат в Whatsapp:", "💬 WhatsApp:").replace("Чат в Telegram:", "💬 Telegram:").replace("2Gis:", "📍 2GIS:")
-                    
-                    info = info.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
                     current_info.append(info)
 
         if current_city and current_group_name:
             info_clean = clean_text("\n".join(current_info))
             if info_clean:
-                data[current_city].append(f"• <b>{current_group_name}</b>\n{info_clean}")
+                data[current_city].append(f"• <b>{current_group_name}</b>{info_clean}")
 
         data = {k: v for k, v in data.items() if v}
         CACHED_DATA = data
@@ -167,6 +179,7 @@ async def callback_schedule(callback: types.CallbackQuery):
         current_message = full_text
         
         for group in groups:
+            # Оставляем запас для help_text, чтобы не превысить лимит Telegram
             if len(current_message) + len(group) + len(t["help_text"]) + 10 > 4000:
                 await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
                 current_message = ""
