@@ -4,7 +4,7 @@ RAG-поиск: находит релевантные фрагменты из к
 по ключевым словам в запросе пользователя.
 """
 
-from knowledge_base import CANONICAL_DATABASE
+from .knowledge_base import CANONICAL_DATABASE
 
 TOPIC_TAGS = {
     # --- Официальная информация ---

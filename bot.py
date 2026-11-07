@@ -43,7 +43,7 @@ async def main():
         start.router, 
         menu.router, 
         form.router, 
-        reflections.router, 
+       # reflections.router, 
         help.router, 
         schedules.router, 
         sponsors.router

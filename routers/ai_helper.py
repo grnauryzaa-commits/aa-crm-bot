@@ -3,8 +3,8 @@ import aiohttp
 import logging
 from config import GROQ_API_KEY
 from database import add_message_to_history, get_recent_history, get_user_language
-from knowledge_base import find_canonical_context
-from rag_search import find_relevant_context
+from .knowledge_base import find_canonical_context
+from .rag_search import find_relevant_context
 
 
 async def ask_ai_for_beginner(user_id: int, user_message: str) -> str:

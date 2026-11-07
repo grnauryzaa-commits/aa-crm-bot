@@ -1,5 +1,12 @@
 import os
 
+# Загружаем .env локально (на Railway этого файла нет, там переменные приходят из окружения)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 # Токен берём ТОЛЬКО из переменных окружения (Railway Variables)
 TOKEN = os.getenv("TOKEN") or os.getenv("BOT_TOKEN")
 if not TOKEN:
