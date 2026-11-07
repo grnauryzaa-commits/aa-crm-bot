@@ -4,6 +4,7 @@ from database import get_user_language
 import requests
 from bs4 import BeautifulSoup
 import logging
+import asyncio
 
 router = Router()
 
@@ -37,35 +38,38 @@ def fetch_schedule_sync():
         soup = BeautifulSoup(res.text, 'html.parser')
         
         data = {}
-        current_city = None
         
-        # Ищем ВСЕ заголовки и блоки с группами
-        for el in soup.find_all(['h2', 'h3']):
-            # Если это заголовок города (h2)
-            if el.name == 'h2':
-                text = el.text.strip()
-                if "Где проходят" in text or "Выбери свою" in text or not text:
-                    continue
-                current_city = text
-                if current_city not in data:
-                    data[current_city] = []
+        # Находим все заголовки городов
+        h2_tags = soup.find_all('h2')
+        
+        for i, h2 in enumerate(h2_tags):
+            city_name = h2.text.strip()
+            if "Где проходят" in city_name or "Выбери свою" in city_name or not city_name:
+                continue
             
-            # Если это группа (h3)
-            elif el.name == 'h3':
-                if not current_city:
-                    continue
+            # Определяем границы секции для этого города
+            start = h2
+            end = h2_tags[i+1] if i + 1 < len(h2_tags) else None
+            
+            data[city_name] = []
+            
+            # Ищем все группы (h3) внутри этой секции
+            current = start.find_next_sibling()
+            while current and current != end:
+                # Ищем h3 на текущем уровне
+                for h3 in current.find_all('h3'):
+                    group_name = h3.text.strip()
+                    
+                    # Для каждой группы ищем ближайший p
+                    p = h3.find_next('p')
+                    info = ""
+                    if p:
+                        info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                    
+                    data[city_name].append(f"• <b>{group_name}</b>{info}")
                 
-                group_name = el.text.strip()
-                
-                # Ищем следующий параграф (описание группы)
-                next_p = el.find_next('p')
-                info = ""
-                if next_p:
-                    info = next_p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
-                
-                if current_city and current_city in data:
-                    data[current_city].append(f"• <b>{group_name}</b>{info}")
-
+                current = current.find_next_sibling()
+        
         # Очищаем пустые города
         data = {k: v for k, v in data.items() if v}
         
@@ -94,8 +98,6 @@ async def show_schedule_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang: lang = "ru"
     
-    # Скачиваем данные при запросе (один раз)
-    import asyncio
     data = await asyncio.to_thread(fetch_schedule_sync)
     
     if not data:
