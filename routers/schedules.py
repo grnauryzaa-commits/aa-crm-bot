@@ -7,7 +7,6 @@ import logging
 
 router = Router()
 
-# Только системные тексты (перевод)
 TEXTS = {
     "ru": {
         "title": "📅 <b>Расписание собраний АА</b>\nВыберите город:",
@@ -23,7 +22,15 @@ TEXTS = {
     }
 }
 
-def parse_schedule():
+# --- КЭШ ДЛЯ РАСПИСАНИЯ ---
+CACHED_DATA = None
+
+def get_schedule_data():
+    global CACHED_DATA
+    # Если данные уже скачаны, отдаем их мгновенно
+    if CACHED_DATA:
+        return CACHED_DATA
+
     try:
         url = "https://aaorg.kz/sobraniya/"
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
@@ -31,34 +38,46 @@ def parse_schedule():
         soup = BeautifulSoup(res.text, 'html.parser')
         
         data = {}
-        current_city = "Расписание"
+        current_city = "Другое"
         
-        # Ищем все заголовки и параграфы
+        # Список слов-исключений (служебные заголовки с сайта)
+        IGNORE_WORDS = ["Где проходят", "Контакты", "Собрания", "Онлайн", "Список", "Вопросы", "Главная", "Новости"]
+
         for el in soup.find_all(['h2', 'h3', 'p']):
             text = el.text.strip()
             if not text: continue
             
             if el.name == 'h2':
-                # Очищаем название от лишнего
+                # Если заголовок содержит служебное слово — пропускаем
+                if any(word.lower() in text.lower() for word in IGNORE_WORDS):
+                    continue
+                    
                 current_city = text.replace('Группы в ', '').replace('Группы ', '').strip()
-                if current_city not in data: data[current_city] = []
+                if current_city not in data: 
+                    data[current_city] = []
+                
             elif el.name == 'h3':
                 group_name = text
                 next_p = el.find_next_sibling('p')
                 info = ""
                 if next_p:
-                    # Форматируем текст для красивого вывода
                     info = next_p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:")
-                data[current_city].append(f"• <b>{group_name}</b>{info}")
                 
-        # Если на сайте есть блок с онлайн-группами (без h3), он попадет в "Расписание" или "Другое"
+                if current_city in data:
+                    data[current_city].append(f"• <b>{group_name}</b>{info}")
+        
+        # Принудительно добавляем Онлайн-группы, если их нет на сайте
+        if "Онлайн" not in data:
+            data["Онлайн"] = ["• <b>Пробуждение</b>: Вт, Чт, Сб 21:00\n<a href='https://us06web.zoom.us/j/82036099070'>Zoom</a> | Пароль: +77754565358"]
+
+        CACHED_DATA = data
         return data
     except Exception as e:
         logging.error(f"Ошибка парсинга: {e}")
         return {}
 
 def get_cities_kb(lang="ru"):
-    data = parse_schedule()
+    data = get_schedule_data()
     kb = []
     row = []
     
@@ -77,7 +96,7 @@ async def show_schedule_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang: lang = "ru"
     
-    data = parse_schedule()
+    data = get_schedule_data()
     if not data:
         await message.answer("Сайт с расписанием временно недоступен. Попробуйте позже.")
         return
@@ -99,15 +118,15 @@ async def callback_schedule(callback: types.CallbackQuery):
         await callback.message.edit_text(t["title"], reply_markup=get_cities_kb(lang), parse_mode="HTML")
 
     elif data.startswith("s_"):
-        group_name = data.replace("s_", "")
-        parsed_data = parse_schedule()
-        groups = parsed_data.get(group_name)
+        city_name = data.replace("s_", "")
+        parsed_data = get_schedule_data()
+        groups = parsed_data.get(city_name)
         
         if not groups:
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
-        text = f"🏙 <b>{group_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
+        text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
