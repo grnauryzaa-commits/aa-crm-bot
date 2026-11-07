@@ -122,17 +122,14 @@ async def callback_schedule(callback: types.CallbackQuery):
             
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         
+        # Если текст длинный (Алматы), отправляем частями, НЕ удаляя старое сообщение
         if len(text) > 4000:
-            try:
-                await callback.message.delete()
-            except Exception:
-                pass
-            
             chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
             
             for chunk in chunks:
                 await callback.bot.send_message(callback.from_user.id, chunk, parse_mode="HTML")
             
+            # Добавляем кнопку "Назад" под последним сообщением
             kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
             await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
             
