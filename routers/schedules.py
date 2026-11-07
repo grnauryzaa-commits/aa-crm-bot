@@ -42,7 +42,8 @@ def fetch_schedule_sync():
         current_group_name = None
         current_info = []
         
-        for el in soup.find_all(['h2', 'h3', 'p', 'div']):
+        # Проходим по всем элементам, сохраняя структуру
+        for el in soup.find_all(['h2', 'h3', 'p']):
             if el.name == 'h2':
                 if current_city and current_group_name:
                     data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
@@ -75,13 +76,15 @@ def fetch_schedule_sync():
                 text = el.text.strip()
                 if any(word in text for word in ["Адрес", "Время", "Контакты", "Zoom", "Пароль", "Телефон"]):
                     info = text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                    
+                    # Обязательно экранируем HTML-символы внутри текста!
+                    info = info.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
                     current_info.append(info)
 
         if current_city and current_group_name:
             data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
 
         data = {k: v for k, v in data.items() if v}
-        
         CACHED_DATA = data
         return data
     except Exception as e:
@@ -142,26 +145,27 @@ async def callback_schedule(callback: types.CallbackQuery):
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
-        # Собираем весь текст города
+        # Собираем сообщение
         full_text = f"🏙 <b>{city_name}</b>\n\n"
-        
-        # Если текст города слишком длинный (как у Алматы), мы будем отправлять его по частям
         current_message = full_text
         
+        # Идем по группам и набираем текст, не разрывая теги
         for group in groups:
-            # Если добавление этой группы превысит лимит в 4000 символов — отправляем текущее сообщение и начинаем новое
-            if len(current_message) + len(group) + 2 > 4000:
+            # Если текущая группа не влезает в лимит (оставляем запас для help_text)
+            if len(current_message) + len(group) + len(t["help_text"]) + 10 > 4000:
+                # Отправляем то, что накопили
                 await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
                 current_message = "" # Сбрасываем буфер
-                
+            
+            # Добавляем группу (она уже отформатирована как единое целое)
             current_message += group + "\n\n"
         
-        # Отправляем остатки текста
+        # Отправляем остаток с текстом помощи
         if current_message:
             current_message += t["help_text"]
             await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
             
-        # Отправляем кнопку "Назад" отдельным сообщением
+        # Кнопка назад
         kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
         await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
