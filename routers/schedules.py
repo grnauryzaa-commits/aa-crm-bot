@@ -39,37 +39,35 @@ def get_schedule_data():
         data = {}
         current_city = None
         
-        # Ищем все заголовки h2 (города) и h3 (группы) подряд
-        for el in soup.find_all(['h2', 'h3', 'p']):
-            text = el.text.strip()
-            if not text: continue
+        # Ищем все заголовки городов (h2) и блоки с группами (div)
+        for el in soup.find_all(['h2', 'div']):
             
-            # h2 - это город (или Онлайн)
+            # 1. Если нашли заголовок города (h2)
             if el.name == 'h2':
-                # Очищаем название от случайных пробелов
-                current_city = text.strip()
-                # Пропускаем служебные заголовки, если они вдруг попадут
-                if "Где проходят" in current_city or "Выбери свою" in current_city:
-                    current_city = None
+                text = el.text.strip()
+                if "Где проходят" in text or "Выбери свою" in text or not text:
                     continue
                 
+                current_city = text
                 if current_city not in data:
                     data[current_city] = []
             
-            # h3 - это название группы
-            elif el.name == 'h3':
-                group_name = text
-                # Ищем следующий параграф с информацией
-                next_p = el.find_next_sibling('p')
-                info = ""
-                if next_p:
-                    # Форматируем текст: заменяем ключевые слова на эмодзи
-                    info = next_p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:")
+            # 2. Если нашли блок с информацией о группе
+            elif el.name == 'div' and 'elementor-image-box-content' in el.get('class', []):
+                if not current_city:
+                    continue
                 
-                if current_city and current_city in data:
+                # Ищем ВНУТРИ этого блока строго h3 (название) и строго p (описание)
+                h3 = el.find('h3')
+                p = el.find('p')
+                
+                if h3 and p:
+                    group_name = h3.text.strip()
+                    info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                    
                     data[current_city].append(f"• <b>{group_name}</b>{info}")
 
-        # Удаляем пустые города (если заголовок был, а групп нет)
+        # Удаляем пустые города
         data = {k: v for k, v in data.items() if v}
         
         CACHED_DATA = data
@@ -83,7 +81,6 @@ def get_cities_kb(lang="ru"):
     kb = []
     row = []
     
-    # Сортируем города по алфавиту
     cities = sorted(data.keys())
     
     for city in cities:
@@ -134,6 +131,11 @@ async def callback_schedule(callback: types.CallbackQuery):
             
         # Формируем текст: Заголовок города + список групп + помощь
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
+        
+        # Защита от слишком длинных сообщений (Алматы - очень большой город)
+        if len(text) > 4000:
+            text = text[:4000] + "..."
+            
         kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
