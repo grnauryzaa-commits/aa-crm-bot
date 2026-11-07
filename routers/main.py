@@ -8,7 +8,8 @@ from aiogram import Bot, Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from config import TOKEN
-from database import init_db, _init_actions_table_sync  # ← ДОБАВЛЕНО
+from database import init_db, _init_actions_table_sync
+from parser import update_schedule_from_site  # <-- ДОБАВЛЕНО ДЛЯ ПАРСЕРА
 from routers.admin import router as admin_router
 from routers.ai_chat import router as ai_chat_router
 from routers.form import router as form_router
@@ -21,7 +22,7 @@ from routers.reflections import (
     send_evening_prayer_to_channel,
     send_morning_prayer_to_channel,
 )
-from routers.report import router as report_router  # ← ДОБАВЛЕНО
+from routers.report import router as report_router
 from routers.schedules import router as schedules_router
 from routers.sponsors import router as sponsors_router
 from routers.start import router as start_router
@@ -49,7 +50,7 @@ async def send_bilingual_evening_prayer(bot):
 
 async def main():
     await init_db()
-    _init_actions_table_sync()  # ← ДОБАВЛЕНО
+    _init_actions_table_sync()
 
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
@@ -63,13 +64,14 @@ async def main():
         help_router,
         schedules_router,
         literature_router,
-        report_router,          # ← ДОБАВЛЕНО (до ai_chat)
+        report_router,
         ai_chat_router,
         get_file_id_router,
     )
 
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
 
+    # --- ТВОИ СТАРЫЕ РАССЫЛКИ (НЕ ТРОНУТЫ) ---
     scheduler.add_job(
         send_bilingual_reflection, CronTrigger(hour=6, minute=0), args=[bot]
     )
@@ -84,9 +86,14 @@ async def main():
         args=[bot],
     )
 
+    # --- НОВАЯ ЗАДАЧА: ОБНОВЛЕНИЕ РАСПИСАНИЯ (КАЖДЫЙ ДЕНЬ В 04:00) ---
+    scheduler.add_job(
+        update_schedule_from_site, CronTrigger(hour=4, minute=0)
+    )
+
     scheduler.start()
     logging.info(
-        "Планировщик двухъязычной рассылки запущен в таймзоне Asia/Almaty."
+        "Планировщик двухъязычной рассылки и парсера запущен в таймзоне Asia/Almaty."
     )
 
     await dp.start_polling(bot)

@@ -6,3 +6,5 @@ apscheduler==3.10.4
 tzdata
 groq
 aiosqlite
+requests
+beautifulsoup4
