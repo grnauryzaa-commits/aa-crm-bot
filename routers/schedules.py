@@ -37,65 +37,46 @@ def fetch_schedule_sync():
         res = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 1. Берем ВЕСЬ текст страницы, убираем пустые строки
-        full_text = soup.get_text(separator='\n')
-        lines = [line.strip() for line in full_text.split('\n') if line.strip()]
-        
         data = {}
         current_city = None
-        current_group_name = None
-        current_group_info = []
         
-        # 2. Идем по строкам и собираем данные
-        for line in lines:
-            lower_line = line.lower()
+        # Ищем только заголовки городов и групп
+        for el in soup.find_all(['h2', 'h3']):
+            if el.name == 'h2':
+                text = el.text.strip()
+                # Фильтруем служебные заголовки
+                if "Где проходят" in text or "Выбери свою" in text or not text:
+                    continue
+                
+                current_city = text
+                if current_city not in data:
+                    data[current_city] = []
             
-            # Пропускаем служебные слова, которые не являются ни городами, ни группами
-            if any(w in lower_line for w in ["главная", "собрания", "жизнь в аа", "литература", "наши истории", "фонд обслуживания", "english", "где проходят", "выбери свою", "прокрутить вверх", "группы в", "группы"]):
-                continue
+            elif el.name == 'h3':
+                if not current_city:
+                    continue
                 
-            # 3. Определяем, является ли строка названием города
-            # Город — это короткая строка (до 25 символов), которая не содержит признаков группы
-            if len(line) < 25 and not any(w in lower_line for w in ["аа ", "аа«", "аа «", "группа", "адрес", "время", "контакт", "zoom", "пароль", "формат", "2gis", "телефон", "https://"]):
-                # Сохраняем предыдущую группу, если она была
-                if current_city and current_group_name:
-                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_group_info))
-                    current_group_name = None
-                    current_group_info = []
+                group_name = el.text.strip()
                 
-                # Проверяем, не является ли это мусором (например, "онлайн")
-                if line not in ["Контакты", "Зенкова 13", "8 (707) 208-05-53", "Прокрутить вверх"]:
-                    current_city = line
-                    if current_city not in data:
-                        data[current_city] = []
-                continue
-
-            # 4. Определяем, является ли строка названием группы
-            if any(w in line for w in ["АА «", "АА \"", "Мужская группа", "Талгар", "каскелен", "АА  «", "АА гр."]):
-                # Сохраняем предыдущую группу, если она была
-                if current_city and current_group_name:
-                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_group_info))
+                # Ищем параграф с описанием внутри того же родительского блока (div)
+                # На сайте описание всегда идет следом за h3 в одном контейнере
+                parent = el.parent
+                p = parent.find('p')
                 
-                current_group_name = line
-                current_group_info = []
-                continue
+                # Если в родителе нет, ищем просто следующий p
+                if not p:
+                    p = el.find_next('p')
+                
+                info = ""
+                if p:
+                    info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                
+                if current_city in data:
+                    data[current_city].append(f"• <b>{group_name}</b>{info}")
 
-            # 5. Собираем информацию для текущей группы
-            if current_group_name:
-                # Если строка содержит ключевые слова, форматируем её
-                formatted_line = line.replace("Адрес:", "📍 Адрес:").replace("Время:", "⏰ Время:").replace("Контакты:", "📞 Контакты:").replace("Площадка Zoom:", "💻 Zoom:").replace("Пароль по номеру:", "🔑 Пароль:").replace("Чат в Whatsapp:", "💬 WhatsApp:").replace("Чат в Telegram:", "💬 Telegram:").replace("2Gis:", "📍 2GIS:")
-                current_group_info.append(formatted_line)
-
-        # Сохраняем последнюю группу
-        if current_city and current_group_name:
-            data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_group_info))
-
-        # Очищаем пустые города
+        # Очищаем города, где нет ни одной группы
         data = {k: v for k, v in data.items() if v}
         
-        if not data:
-            return {}
-            
         CACHED_DATA = data
         return data
     except Exception as e:
@@ -159,7 +140,6 @@ async def callback_schedule(callback: types.CallbackQuery):
             
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         
-        # Если Алматы выдает очень много текста, бьем на части
         if len(text) > 4000:
             chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
             
