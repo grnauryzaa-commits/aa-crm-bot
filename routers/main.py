@@ -9,7 +9,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from config import TOKEN
 from database import init_db, _init_actions_table_sync
-from parser import update_schedule_from_site  # Импорт нашего парсера
 
 from routers.admin import router as admin_router
 from routers.ai_chat import router as ai_chat_router
@@ -53,15 +52,6 @@ async def main():
     await init_db()
     _init_actions_table_sync()
 
-    # --- ЗАПУСКАЕМ ПАРСЕР ПРИ СТАРТЕ БОТА ---
-    logging.info("Запуск первичного парсинга расписания...")
-    try:
-        # Запускаем в отдельном потоке, чтобы не блокировать запуск бота
-        await asyncio.to_thread(update_schedule_from_site)
-        logging.info("Парсинг расписания успешно завершен.")
-    except Exception as e:
-        logging.error(f"Ошибка при старте парсера: {e}")
-
     bot = Bot(token=TOKEN)
     dp = Dispatcher()
 
@@ -81,7 +71,7 @@ async def main():
 
     scheduler = AsyncIOScheduler(timezone="Asia/Almaty")
 
-    # ТВОИ РАССЫЛКИ
+    # Твои старые рассылки
     scheduler.add_job(
         send_bilingual_reflection, CronTrigger(hour=6, minute=0), args=[bot]
     )
@@ -96,13 +86,8 @@ async def main():
         args=[bot],
     )
 
-    # ПАРСЕР РАСПИСАНИЯ (КАЖДЫЙ ДЕНЬ В 04:00)
-    scheduler.add_job(
-        update_schedule_from_site, CronTrigger(hour=4, minute=0)
-    )
-
     scheduler.start()
-    logging.info("Планировщик рассылок и парсера запущен.")
+    logging.info("Планировщик рассылок запущен.")
 
     await dp.start_polling(bot)
 
