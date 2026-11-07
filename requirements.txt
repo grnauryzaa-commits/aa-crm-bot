@@ -7,4 +7,4 @@ tzdata
 groq
 aiosqlite
 requests
-beautifulsoup4
+beautifulsoup4python-dotenv

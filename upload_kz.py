@@ -6,9 +6,10 @@
 import re
 import psycopg2
 from docx import Document
+from db_config import DATABASE_URL as DB_URL
 
 # ← ВСТАВЬ СВОЙ DATABASE_URL из Railway (тот же, что в config.py)
-DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
+
 
 DOCX_PATH = "reflections_kz.docx"
 

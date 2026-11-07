@@ -1,7 +1,8 @@
 import psycopg2
+from db_config import DATABASE_URL as DB_URL
 
 # Твоя рабочая строка подключения
-DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@postgres.railway.internal:5432/railway"
+
 
 def fix_database():
     print("🚀 Подключаемся к PostgreSQL на Railway для исправления...")

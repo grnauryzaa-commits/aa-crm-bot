@@ -1,6 +1,13 @@
 import psycopg2
+import sys
+from pathlib import Path as _Path
+_ROOT = _Path(__file__).resolve().parents[0]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
-DATABASE_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
+from db_config import DATABASE_URL
+
+
 
 def create_reflections_table():
     try:

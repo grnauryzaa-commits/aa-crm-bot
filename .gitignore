@@ -10,3 +10,11 @@ venv/
 .vscode/
 *.log
 .DS_Store
+
+# секреты
+.env
+.env.*
+!.env.example
+
+# бэкапы скрипта миграции
+*.bak

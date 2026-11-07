@@ -2,9 +2,10 @@ import asyncio
 import aiohttp
 import psycopg2
 from bs4 import BeautifulSoup
+from db_config import DATABASE_URL as DB_URL
 
 # Твой адрес базы
-DB_URL = "postgresql://postgres:rjKAEdhpAeVceQzFobzCKFRbWnJwYOem@thomas.proxy.rlwy.net:12836/railway"
+
 
 async def fill():
     print("🧹 Начинаю запись базы (исправленный парсер)...")
