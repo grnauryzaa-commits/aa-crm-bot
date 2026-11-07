@@ -13,7 +13,7 @@ from routers.reflections import (
 )
 import psycopg2
 
-from .ai_helper import ask_ai_for_beginner
+from ai_helper import ask_ai_for_beginner
 
 router = Router()
 
