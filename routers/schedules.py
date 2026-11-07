@@ -27,14 +27,42 @@ TEXTS = {
 CACHED_DATA = None
 
 def clean_text(text):
-    """Убирает все HTML-теги из текста"""
+    """Тщательная очистка текста от мусора"""
     if not text:
         return ""
+    # Убираем HTML-теги и их обрывки
     text = re.sub(r'<[^>]+>', '', text)
-    text = text.replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&").replace("&lt;/b", "")
-    text = re.sub(r'[ \t]+', ' ', text)
+    text = text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+    
+    # Чиним слипшиеся слова (номеруhttps -> номеру https)
+    text = re.sub(r'([а-яА-ЯёЁ])(https?://)', r'\1 \2', text)
+    # Чиним слипшееся время (19:00cуббота -> 19:00 cуббота)
     text = re.sub(r'(\d)([А-ЯЁA-Z])', r'\1 \2', text)
-    return text.strip()
+    
+    # Убираем множественные пробелы, но сохраняем переносы
+    text = re.sub(r'[ \t]+', ' ', text)
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    
+    result = []
+    for line in lines:
+        # Форматируем ключевые слова
+        line = line.replace("Адрес:", "📍 Адрес:").replace("Время:", "⏰ Время:").replace("Контакты:", "📞 Контакты:").replace("Площадка Zoom:", "💻 Zoom:").replace("Пароль по номеру:", "🔑 Пароль:").replace("Чат в Whatsapp:", "💬 WhatsApp:").replace("Чат в Telegram:", "💬 Telegram:")
+        
+        # Чиним 2GIS (убираем пробел)
+        line = line.replace("2 GIS", "2GIS").replace("2Gis:", "📍 2GIS:")
+        
+        # Если строка содержит ссылку, выносим её на новую строку
+        if "http" in line:
+            parts = re.split(r'(https?://\S+)', line)
+            for part in parts:
+                if part.startswith("http"):
+                    result.append(f"\n🔗 {part}")
+                elif part.strip():
+                    result.append(f"\n{part.strip()}")
+        else:
+            result.append(f"\n{line}")
+            
+    return "".join(result).strip()
 
 def fetch_schedule_sync():
     global CACHED_DATA
@@ -57,7 +85,6 @@ def fetch_schedule_sync():
             if el.name == 'h2':
                 if current_city and current_group_name:
                     info_text = clean_text("\n".join(current_info))
-                    # Используем символ "•" вместо HTML-тега <b>
                     data[current_city].append(f"🔹 {clean_text(current_group_name)}\n{info_text}")
                 
                 text = el.text.strip()
@@ -88,8 +115,7 @@ def fetch_schedule_sync():
                 
                 text = el.text.strip()
                 if any(word in text for word in ["Адрес", "Время", "Контакты", "Zoom", "Пароль", "Телефон", "Как нас найти", "Формат", "Telegram", "WhatsApp"]):
-                    info = text.replace("Адрес:", "📍 Адрес:").replace("Время:", "⏰ Время:").replace("Контакты:", "📞 Контакты:").replace("Площадка Zoom:", "💻 Zoom:").replace("Пароль по номеру:", "🔑 Пароль:").replace("Чат в Whatsapp:", "💬 WhatsApp:").replace("Чат в Telegram:", "💬 Telegram:").replace("2Gis:", "📍 2GIS:")
-                    current_info.append(info)
+                    current_info.append(text)
 
         if current_city and current_group_name:
             info_text = clean_text("\n".join(current_info))
@@ -158,10 +184,7 @@ async def callback_schedule(callback: types.CallbackQuery):
             
         full_text = f"🏙 {city_name}\n\n" + "\n\n".join(groups) + t["help_text"]
         
-        # Отправляем ОДНИМ сообщением, но БЕЗ parse_mode="HTML", 
-        # чтобы Telegram вообще не пытался искать теги и падать
         if len(full_text) > 4000:
-            # Если текст реально огромный (бывает у Алматы), режем по 4000, но уже без риска
             chunks = [full_text[i:i+4000] for i in range(0, len(full_text), 4000)]
             for chunk in chunks:
                 await callback.bot.send_message(callback.from_user.id, chunk)
