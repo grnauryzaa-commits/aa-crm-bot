@@ -4,7 +4,6 @@ from database import get_user_language
 import requests
 from bs4 import BeautifulSoup
 import logging
-import re
 import asyncio
 
 router = Router()
@@ -46,9 +45,7 @@ def fetch_schedule_sync():
         for el in soup.find_all(['h2', 'h3', 'p']):
             if el.name == 'h2':
                 if current_city and current_group_name:
-                    # Сохраняем группу с HTML-форматированием
-                    info_text = "\n".join(current_info)
-                    info_text = info_text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+                    info_text = "\n".join(current_info).replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
                     data[current_city].append(f"• <b>{current_group_name}</b>\n{info_text.strip()}")
                 
                 text = el.text.strip()
@@ -67,8 +64,7 @@ def fetch_schedule_sync():
                     continue
                 
                 if current_group_name:
-                    info_text = "\n".join(current_info)
-                    info_text = info_text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+                    info_text = "\n".join(current_info).replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
                     data[current_city].append(f"• <b>{current_group_name}</b>\n{info_text.strip()}")
                 
                 current_group_name = el.text.strip()
@@ -84,8 +80,7 @@ def fetch_schedule_sync():
                     current_info.append(info)
 
         if current_city and current_group_name:
-            info_text = "\n".join(current_info)
-            info_text = info_text.replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
+            info_text = "\n".join(current_info).replace("&lt;/b", "").replace("&lt;", "").replace("&gt;", "").replace("&amp;", "&")
             data[current_city].append(f"• <b>{current_group_name}</b>\n{info_text.strip()}")
 
         data = {k: v for k, v in data.items() if v}
@@ -149,25 +144,18 @@ async def callback_schedule(callback: types.CallbackQuery):
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
-        # Отправляем группу целиком, чтобы HTML-теги не рвались
-        full_text = f"🏙 <b>{city_name}</b>\n\n"
-        current_message = full_text
+        # Отправляем заголовок
+        await callback.bot.send_message(callback.from_user.id, f"🏙 <b>{city_name}</b>", parse_mode="HTML")
         
+        # Отправляем каждую группу отдельным сообщением
         for group in groups:
-            # Если сообщение станет больше 3900 символов, отправляем текущее и начинаем новое
-            if len(current_message) + len(group) > 3900:
-                await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
-                current_message = ""
-                
-            current_message += group + "\n\n"
-        
-        if current_message:
-            current_message += t["help_text"]
-            if len(current_message) > 4000:
-                current_message = current_message[:4000]
-            await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
+            # Защита на случай, если группа слишком большая (маловероятно)
+            if len(group) > 4000:
+                group = group[:4000] + "..."
+            await callback.bot.send_message(callback.from_user.id, group, parse_mode="HTML")
             
+        # Отправляем кнопку Назад
         kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
-        await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        await callback.bot.send_message(callback.from_user.id, t["help_text"], reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
     await callback.answer()
