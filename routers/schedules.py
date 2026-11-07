@@ -57,7 +57,8 @@ def fetch_schedule_sync():
             if el.name == 'h2':
                 if current_city and current_group_name:
                     info_text = clean_text("\n".join(current_info))
-                    data[current_city].append(f"• {clean_text(current_group_name)}\n{info_text}")
+                    # Используем символ "•" вместо HTML-тега <b>
+                    data[current_city].append(f"🔹 {clean_text(current_group_name)}\n{info_text}")
                 
                 text = el.text.strip()
                 if "Где проходят" in text or "Выбери свою" in text or not text:
@@ -76,7 +77,7 @@ def fetch_schedule_sync():
                 
                 if current_group_name:
                     info_text = clean_text("\n".join(current_info))
-                    data[current_city].append(f"• {clean_text(current_group_name)}\n{info_text}")
+                    data[current_city].append(f"🔹 {clean_text(current_group_name)}\n{info_text}")
                 
                 current_group_name = el.text.strip()
                 current_info = []
@@ -92,7 +93,7 @@ def fetch_schedule_sync():
 
         if current_city and current_group_name:
             info_text = clean_text("\n".join(current_info))
-            data[current_city].append(f"• {clean_text(current_group_name)}\n{info_text}")
+            data[current_city].append(f"🔹 {clean_text(current_group_name)}\n{info_text}")
 
         data = {k: v for k, v in data.items() if v}
         CACHED_DATA = data
@@ -155,15 +156,19 @@ async def callback_schedule(callback: types.CallbackQuery):
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
-        # Отправляем заголовок города
-        await callback.bot.send_message(callback.from_user.id, f"🏙 <b>{city_name}</b>", parse_mode="HTML")
+        full_text = f"🏙 {city_name}\n\n" + "\n\n".join(groups) + t["help_text"]
         
-        # Отправляем каждую группу отдельным сообщением (чистый текст, без HTML)
-        for group in groups:
-            await callback.bot.send_message(callback.from_user.id, group)
+        # Отправляем ОДНИМ сообщением, но БЕЗ parse_mode="HTML", 
+        # чтобы Telegram вообще не пытался искать теги и падать
+        if len(full_text) > 4000:
+            # Если текст реально огромный (бывает у Алматы), режем по 4000, но уже без риска
+            chunks = [full_text[i:i+4000] for i in range(0, len(full_text), 4000)]
+            for chunk in chunks:
+                await callback.bot.send_message(callback.from_user.id, chunk)
+        else:
+            await callback.bot.send_message(callback.from_user.id, full_text)
             
-        # Кнопка назад
         kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
-        await callback.bot.send_message(callback.from_user.id, t["help_text"], reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+        await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
     await callback.answer()
