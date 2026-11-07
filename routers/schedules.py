@@ -39,42 +39,56 @@ def fetch_schedule_sync():
         
         data = {}
         current_city = None
+        current_group_name = None
+        current_info = []
         
-        # Ищем только заголовки городов и групп
-        for el in soup.find_all(['h2', 'h3']):
+        # Проходим по всем элементам по порядку (в том числе по div, в которых лежат параграфы)
+        for el in soup.find_all(['h2', 'h3', 'p', 'div']):
+            # 1. Если нашли город
             if el.name == 'h2':
+                # Сохраняем предыдущую группу, если она была
+                if current_city and current_group_name:
+                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
+                
                 text = el.text.strip()
-                # Фильтруем служебные заголовки
                 if "Где проходят" in text or "Выбери свою" in text or not text:
+                    current_city = None
                     continue
                 
                 current_city = text
+                current_group_name = None
+                current_info = []
                 if current_city not in data:
                     data[current_city] = []
             
+            # 2. Если нашли название группы
             elif el.name == 'h3':
                 if not current_city:
                     continue
                 
-                group_name = el.text.strip()
+                # Сохраняем предыдущую группу
+                if current_group_name:
+                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
                 
-                # Ищем параграф с описанием внутри того же родительского блока (div)
-                # На сайте описание всегда идет следом за h3 в одном контейнере
-                parent = el.parent
-                p = parent.find('p')
+                current_group_name = el.text.strip()
+                current_info = []
+            
+            # 3. Если нашли абзац с текстом
+            elif el.name == 'p':
+                if not current_city or not current_group_name:
+                    continue
                 
-                # Если в родителе нет, ищем просто следующий p
-                if not p:
-                    p = el.find_next('p')
-                
-                info = ""
-                if p:
-                    info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
-                
-                if current_city in data:
-                    data[current_city].append(f"• <b>{group_name}</b>{info}")
+                text = el.text.strip()
+                # Если это описание группы (содержит адрес, время или контакты)
+                if any(word in text for word in ["Адрес", "Время", "Контакты", "Zoom", "Пароль", "Телефон"]):
+                    info = text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                    current_info.append(info)
 
-        # Очищаем города, где нет ни одной группы
+        # Сохраняем последнюю группу
+        if current_city and current_group_name:
+            data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
+
+        # Очищаем пустые города
         data = {k: v for k, v in data.items() if v}
         
         CACHED_DATA = data
@@ -102,7 +116,6 @@ async def show_schedule_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang: lang = "ru"
     
-    # Парсим в фоне
     data = await asyncio.to_thread(fetch_schedule_sync)
     
     if not data:
