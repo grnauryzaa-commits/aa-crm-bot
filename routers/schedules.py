@@ -1,7 +1,7 @@
 from aiogram import F, Router, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import get_user_language
-import requests
+import aiohttp
 from bs4 import BeautifulSoup
 import logging
 
@@ -25,39 +25,36 @@ TEXTS = {
 # --- КЭШ ---
 CACHED_DATA = None
 
-def get_schedule_data():
+async def fetch_schedule():
     global CACHED_DATA
     if CACHED_DATA:
         return CACHED_DATA
 
+    url = "https://aaorg.kz/sobraniya/"
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+    
     try:
-        url = "https://aaorg.kz/sobraniya/"
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        res = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, timeout=10) as response:
+                html = await response.text()
+                
+        soup = BeautifulSoup(html, 'html.parser')
         data = {}
         current_city = None
         
-        # Ищем все заголовки городов (h2) и блоки с группами (div)
         for el in soup.find_all(['h2', 'div']):
-            
-            # 1. Если нашли заголовок города (h2)
             if el.name == 'h2':
                 text = el.text.strip()
                 if "Где проходят" in text or "Выбери свою" in text or not text:
                     continue
-                
                 current_city = text
                 if current_city not in data:
                     data[current_city] = []
             
-            # 2. Если нашли блок с информацией о группе
             elif el.name == 'div' and 'elementor-image-box-content' in el.get('class', []):
                 if not current_city:
                     continue
                 
-                # Ищем ВНУТРИ этого блока строго h3 (название) и строго p (описание)
                 h3 = el.find('h3')
                 p = el.find('p')
                 
@@ -65,22 +62,18 @@ def get_schedule_data():
                     group_name = h3.text.strip()
                     info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
                     
-                    data[current_city].append(f"• <b>{group_name}</b>{info}")
+                    data[current_city].append(f"• <b>{group_name}</b>\n{info}")
 
-        # Удаляем пустые города
         data = {k: v for k, v in data.items() if v}
-        
         CACHED_DATA = data
         return data
     except Exception as e:
         logging.error(f"Ошибка парсинга: {e}")
         return {}
 
-def get_cities_kb(lang="ru"):
-    data = get_schedule_data()
+def get_cities_kb(data, lang="ru"):
     kb = []
     row = []
-    
     cities = sorted(data.keys())
     
     for city in cities:
@@ -97,44 +90,44 @@ async def show_schedule_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang: lang = "ru"
     
-    data = get_schedule_data()
+    await message.answer("⏳ Загружаю расписание с сайта, подождите...")
+    
+    data = await fetch_schedule()
     if not data:
         await message.answer("Сайт с расписанием временно недоступен. Попробуйте позже.")
         return
         
     await message.answer(
         TEXTS[lang]["title"],
-        reply_markup=get_cities_kb(lang),
+        reply_markup=get_cities_kb(data, lang),
         parse_mode="HTML",
     )
 
 @router.callback_query(F.data.startswith("s_"))
 async def callback_schedule(callback: types.CallbackQuery):
-    data = callback.data
+    data_str = callback.data
     lang = await get_user_language(callback.from_user.id)
     if not lang: lang = "ru"
     t = TEXTS[lang]
 
-    if data == "s_back":
-        await callback.message.edit_text(t["title"], reply_markup=get_cities_kb(lang), parse_mode="HTML")
+    if data_str == "s_back":
+        await callback.message.edit_text(t["title"], reply_markup=get_cities_kb(CACHED_DATA, lang), parse_mode="HTML")
         await callback.answer()
         return
 
-    elif data.startswith("s_"):
-        city_name = data.replace("s_", "")
-        parsed_data = get_schedule_data()
-        groups = parsed_data.get(city_name)
+    elif data_str.startswith("s_"):
+        city_name = data_str.replace("s_", "")
+        groups = CACHED_DATA.get(city_name) if CACHED_DATA else None
         
         if not groups:
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
-        # Формируем текст: Заголовок города + список групп + помощь
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         
-        # Защита от слишком длинных сообщений (Алматы - очень большой город)
+        # Лимит Telegram - 4096 символов. Бьем сообщение на части, если оно слишком длинное
         if len(text) > 4000:
-            text = text[:4000] + "..."
+            text = text[:4000] + "\n\n<i>...текст обрезан, так как слишком длинный</i>"
             
         kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
