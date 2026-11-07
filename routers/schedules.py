@@ -34,36 +34,51 @@ async def fetch_schedule():
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=10) as response:
+            async with session.get(url, headers=headers, timeout=15) as response:
                 html = await response.text()
                 
         soup = BeautifulSoup(html, 'html.parser')
         data = {}
         current_city = None
         
-        for el in soup.find_all(['h2', 'div']):
-            if el.name == 'h2':
-                text = el.text.strip()
-                if "Где проходят" in text or "Выбери свою" in text or not text:
-                    continue
-                current_city = text
-                if current_city not in data:
-                    data[current_city] = []
+        # Ищем все заголовки городов (h2)
+        for h2 in soup.find_all('h2'):
+            city_name = h2.text.strip()
+            if "Где проходят" in city_name or "Выбери свою" in city_name or not city_name:
+                continue
             
-            elif el.name == 'div' and 'elementor-image-box-content' in el.get('class', []):
-                if not current_city:
-                    continue
-                
-                h3 = el.find('h3')
-                p = el.find('p')
-                
-                if h3 and p:
+            data[city_name] = []
+            
+            # Ищем блоки с группами СТРОГО после этого заголовка и до следующего
+            current_element = h2.find_next_sibling()
+            
+            while current_element and current_element.name != 'section':
+                # Ищем h3 в текущем блоке
+                h3 = current_element.find('h3')
+                if h3:
                     group_name = h3.text.strip()
-                    info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                    # Ищем параграф в том же родителе, где и h3
+                    parent = h3.parent
+                    p = parent.find('p')
                     
-                    data[current_city].append(f"• <b>{group_name}</b>\n{info}")
+                    if p:
+                        info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                        data[city_name].append(f"• <b>{group_name}</b>\n{info}")
+                
+                # Двигаемся к следующему элементу
+                current_element = current_element.find_next_sibling()
+                
+                # Если встретили следующий заголовок города, останавливаемся
+                if current_element and current_element.name == 'h2' and current_element != h2:
+                    break
+                
+                # Если встретили следующую секцию с заголовком, останавливаемся
+                if current_element and current_element.find('h2'):
+                    break
 
+        # Очищаем пустые города
         data = {k: v for k, v in data.items() if v}
+        
         CACHED_DATA = data
         return data
     except Exception as e:
@@ -122,14 +137,17 @@ async def callback_schedule(callback: types.CallbackQuery):
             
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         
-        # Если текст длинный (Алматы), отправляем частями, НЕ удаляя старое сообщение
         if len(text) > 4000:
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
+            
             chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
             
             for chunk in chunks:
                 await callback.bot.send_message(callback.from_user.id, chunk, parse_mode="HTML")
             
-            # Добавляем кнопку "Назад" под последним сообщением
             kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
             await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
             
