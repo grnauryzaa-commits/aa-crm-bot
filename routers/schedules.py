@@ -1,7 +1,7 @@
 from aiogram import F, Router, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import get_user_language
-import aiohttp
+import requests
 from bs4 import BeautifulSoup
 import logging
 
@@ -24,7 +24,7 @@ TEXTS = {
 
 CACHED_DATA = None
 
-async def fetch_schedule():
+def fetch_schedule_sync():
     global CACHED_DATA
     if CACHED_DATA:
         return CACHED_DATA
@@ -33,48 +33,38 @@ async def fetch_schedule():
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=15) as response:
-                html = await response.text()
-                
-        soup = BeautifulSoup(html, 'html.parser')
+        res = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
         data = {}
         current_city = None
         
-        # Ищем все заголовки городов (h2)
-        for h2 in soup.find_all('h2'):
-            city_name = h2.text.strip()
-            if "Где проходят" in city_name or "Выбери свою" in city_name or not city_name:
-                continue
+        # Ищем ВСЕ заголовки и блоки с группами
+        for el in soup.find_all(['h2', 'h3']):
+            # Если это заголовок города (h2)
+            if el.name == 'h2':
+                text = el.text.strip()
+                if "Где проходят" in text or "Выбери свою" in text or not text:
+                    continue
+                current_city = text
+                if current_city not in data:
+                    data[current_city] = []
             
-            data[city_name] = []
-            
-            # Ищем блоки с группами СТРОГО после этого заголовка и до следующего
-            current_element = h2.find_next_sibling()
-            
-            while current_element and current_element.name != 'section':
-                # Ищем h3 в текущем блоке
-                h3 = current_element.find('h3')
-                if h3:
-                    group_name = h3.text.strip()
-                    # Ищем параграф в том же родителе, где и h3
-                    parent = h3.parent
-                    p = parent.find('p')
-                    
-                    if p:
-                        info = p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
-                        data[city_name].append(f"• <b>{group_name}</b>\n{info}")
+            # Если это группа (h3)
+            elif el.name == 'h3':
+                if not current_city:
+                    continue
                 
-                # Двигаемся к следующему элементу
-                current_element = current_element.find_next_sibling()
+                group_name = el.text.strip()
                 
-                # Если встретили следующий заголовок города, останавливаемся
-                if current_element and current_element.name == 'h2' and current_element != h2:
-                    break
+                # Ищем следующий параграф (описание группы)
+                next_p = el.find_next('p')
+                info = ""
+                if next_p:
+                    info = next_p.text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
                 
-                # Если встретили следующую секцию с заголовком, останавливаемся
-                if current_element and current_element.find('h2'):
-                    break
+                if current_city and current_city in data:
+                    data[current_city].append(f"• <b>{group_name}</b>{info}")
 
         # Очищаем пустые города
         data = {k: v for k, v in data.items() if v}
@@ -104,7 +94,10 @@ async def show_schedule_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang: lang = "ru"
     
-    data = await fetch_schedule()
+    # Скачиваем данные при запросе (один раз)
+    import asyncio
+    data = await asyncio.to_thread(fetch_schedule_sync)
+    
     if not data:
         await message.answer("Сайт с расписанием временно недоступен. Попробуйте позже.")
         return
@@ -138,11 +131,6 @@ async def callback_schedule(callback: types.CallbackQuery):
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         
         if len(text) > 4000:
-            try:
-                await callback.message.delete()
-            except Exception:
-                pass
-            
             chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
             
             for chunk in chunks:
