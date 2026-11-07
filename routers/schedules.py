@@ -22,7 +22,6 @@ TEXTS = {
     }
 }
 
-# --- КЭШ ---
 CACHED_DATA = None
 
 async def fetch_schedule():
@@ -90,8 +89,6 @@ async def show_schedule_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang: lang = "ru"
     
-    await message.answer("⏳ Загружаю расписание с сайта, подождите...")
-    
     data = await fetch_schedule()
     if not data:
         await message.answer("Сайт с расписанием временно недоступен. Попробуйте позже.")
@@ -125,11 +122,22 @@ async def callback_schedule(callback: types.CallbackQuery):
             
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         
-        # Лимит Telegram - 4096 символов. Бьем сообщение на части, если оно слишком длинное
         if len(text) > 4000:
-            text = text[:4000] + "\n\n<i>...текст обрезан, так как слишком длинный</i>"
+            try:
+                await callback.message.delete()
+            except Exception:
+                pass
             
-        kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+            chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+            
+            for chunk in chunks:
+                await callback.bot.send_message(callback.from_user.id, chunk, parse_mode="HTML")
+            
+            kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
+            await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            
+        else:
+            kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
+            await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
 
     await callback.answer()
