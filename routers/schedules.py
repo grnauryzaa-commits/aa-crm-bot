@@ -4,6 +4,7 @@ from database import get_user_language
 import requests
 from bs4 import BeautifulSoup
 import logging
+import re
 import asyncio
 
 router = Router()
@@ -25,6 +26,18 @@ TEXTS = {
 
 CACHED_DATA = None
 
+def clean_text(text):
+    """Очищает текст от лишних пробелов, пустых строк и мусора"""
+    if not text:
+        return ""
+    # Заменяем множественные пробелы и переносы на один пробел
+    text = re.sub(r'\s+', ' ', text)
+    # Добавляем пробел перед заглавными буквами, если они слиплись с цифрами
+    text = re.sub(r'(\d)([А-ЯЁA-Z])', r'\1 \2', text)
+    # Убираем мусорные ссылки в тексте (типа https://...)
+    text = re.sub(r'https?://\S+', '', text)
+    return text.strip()
+
 def fetch_schedule_sync():
     global CACHED_DATA
     if CACHED_DATA:
@@ -42,18 +55,20 @@ def fetch_schedule_sync():
         current_group_name = None
         current_info = []
         
-        # Проходим по всем элементам, сохраняя структуру
         for el in soup.find_all(['h2', 'h3', 'p']):
             if el.name == 'h2':
                 if current_city and current_group_name:
-                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
+                    info_clean = clean_text("\n".join(current_info))
+                    if info_clean:
+                        data[current_city].append(f"• <b>{current_group_name}</b>\n{info_clean}")
                 
                 text = el.text.strip()
                 if "Где проходят" in text or "Выбери свою" in text or not text:
                     current_city = None
                     continue
                 
-                current_city = text
+                # Делаем первую букву заглавной
+                current_city = text.capitalize()
                 current_group_name = None
                 current_info = []
                 if current_city not in data:
@@ -64,7 +79,9 @@ def fetch_schedule_sync():
                     continue
                 
                 if current_group_name:
-                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
+                    info_clean = clean_text("\n".join(current_info))
+                    if info_clean:
+                        data[current_city].append(f"• <b>{current_group_name}</b>\n{info_clean}")
                 
                 current_group_name = el.text.strip()
                 current_info = []
@@ -74,15 +91,16 @@ def fetch_schedule_sync():
                     continue
                 
                 text = el.text.strip()
-                if any(word in text for word in ["Адрес", "Время", "Контакты", "Zoom", "Пароль", "Телефон"]):
-                    info = text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
+                if any(word in text for word in ["Адрес", "Время", "Контакты", "Zoom", "Пароль", "Телефон", "Как нас найти", "Формат"]):
+                    info = text.replace("Адрес:", "📍 Адрес:").replace("Время:", "⏰ Время:").replace("Контакты:", "📞 Контакты:").replace("Площадка Zoom:", "💻 Zoom:").replace("Пароль по номеру:", "🔑 Пароль:").replace("Чат в Whatsapp:", "💬 WhatsApp:").replace("Чат в Telegram:", "💬 Telegram:").replace("2Gis:", "📍 2GIS:")
                     
-                    # Обязательно экранируем HTML-символы внутри текста!
                     info = info.replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;")
                     current_info.append(info)
 
         if current_city and current_group_name:
-            data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
+            info_clean = clean_text("\n".join(current_info))
+            if info_clean:
+                data[current_city].append(f"• <b>{current_group_name}</b>\n{info_clean}")
 
         data = {k: v for k, v in data.items() if v}
         CACHED_DATA = data
@@ -145,27 +163,20 @@ async def callback_schedule(callback: types.CallbackQuery):
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
-        # Собираем сообщение
         full_text = f"🏙 <b>{city_name}</b>\n\n"
         current_message = full_text
         
-        # Идем по группам и набираем текст, не разрывая теги
         for group in groups:
-            # Если текущая группа не влезает в лимит (оставляем запас для help_text)
             if len(current_message) + len(group) + len(t["help_text"]) + 10 > 4000:
-                # Отправляем то, что накопили
                 await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
-                current_message = "" # Сбрасываем буфер
-            
-            # Добавляем группу (она уже отформатирована как единое целое)
+                current_message = ""
+                
             current_message += group + "\n\n"
         
-        # Отправляем остаток с текстом помощи
         if current_message:
             current_message += t["help_text"]
             await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
             
-        # Кнопка назад
         kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
         await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
