@@ -42,11 +42,8 @@ def fetch_schedule_sync():
         current_group_name = None
         current_info = []
         
-        # Проходим по всем элементам по порядку (в том числе по div, в которых лежат параграфы)
         for el in soup.find_all(['h2', 'h3', 'p', 'div']):
-            # 1. Если нашли город
             if el.name == 'h2':
-                # Сохраняем предыдущую группу, если она была
                 if current_city and current_group_name:
                     data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
                 
@@ -61,34 +58,28 @@ def fetch_schedule_sync():
                 if current_city not in data:
                     data[current_city] = []
             
-            # 2. Если нашли название группы
             elif el.name == 'h3':
                 if not current_city:
                     continue
                 
-                # Сохраняем предыдущую группу
                 if current_group_name:
                     data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
                 
                 current_group_name = el.text.strip()
                 current_info = []
             
-            # 3. Если нашли абзац с текстом
             elif el.name == 'p':
                 if not current_city or not current_group_name:
                     continue
                 
                 text = el.text.strip()
-                # Если это описание группы (содержит адрес, время или контакты)
                 if any(word in text for word in ["Адрес", "Время", "Контакты", "Zoom", "Пароль", "Телефон"]):
                     info = text.replace("Адрес:", "\n📍 Адрес:").replace("Время:", "\n⏰ Время:").replace("Контакты:", "\n📞 Контакты:").replace("Площадка Zoom:", "\n💻 Zoom:").replace("Пароль по номеру:", "\n🔑 Пароль:").replace("Чат в Whatsapp:", "\n💬 WhatsApp:").replace("Чат в Telegram:", "\n💬 Telegram:").strip()
                     current_info.append(info)
 
-        # Сохраняем последнюю группу
         if current_city and current_group_name:
             data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_info))
 
-        # Очищаем пустые города
         data = {k: v for k, v in data.items() if v}
         
         CACHED_DATA = data
@@ -151,19 +142,27 @@ async def callback_schedule(callback: types.CallbackQuery):
             await callback.answer(t["no_schedule"], show_alert=True)
             return
             
-        text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
+        # Собираем весь текст города
+        full_text = f"🏙 <b>{city_name}</b>\n\n"
         
-        if len(text) > 4000:
-            chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
+        # Если текст города слишком длинный (как у Алматы), мы будем отправлять его по частям
+        current_message = full_text
+        
+        for group in groups:
+            # Если добавление этой группы превысит лимит в 4000 символов — отправляем текущее сообщение и начинаем новое
+            if len(current_message) + len(group) + 2 > 4000:
+                await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
+                current_message = "" # Сбрасываем буфер
+                
+            current_message += group + "\n\n"
+        
+        # Отправляем остатки текста
+        if current_message:
+            current_message += t["help_text"]
+            await callback.bot.send_message(callback.from_user.id, current_message, parse_mode="HTML")
             
-            for chunk in chunks:
-                await callback.bot.send_message(callback.from_user.id, chunk, parse_mode="HTML")
-            
-            kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
-            await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-            
-        else:
-            kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
-            await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+        # Отправляем кнопку "Назад" отдельным сообщением
+        kb = [[InlineKeyboardButton(text=t["back"], callback_data="s_back")]]
+        await callback.bot.send_message(callback.from_user.id, "Выберите действие:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
     await callback.answer()
