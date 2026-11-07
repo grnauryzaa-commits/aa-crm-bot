@@ -37,67 +37,62 @@ def fetch_schedule_sync():
         res = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # Берем ВЕСЬ текст со страницы, убираем лишние пробелы и пустые строки
+        # 1. Берем ВЕСЬ текст страницы, убираем пустые строки
         full_text = soup.get_text(separator='\n')
         lines = [line.strip() for line in full_text.split('\n') if line.strip()]
         
         data = {}
         current_city = None
-        current_groups = []
+        current_group_name = None
+        current_group_info = []
         
-        # Список служебных слов, которые нам не нужны
-        ignore_words = ["главная", "собрания", "қазақ тілінде", "жизнь в аа", "литература", "наши истории", "фонд обслуживания", "english", "где проходят", "выбери свою", "контакты", "зенкова 13", "8 (707) 208-05-53", "прокрутить вверх"]
-        
-        # Ищем начало расписания
-        start_index = 0
-        for i, line in enumerate(lines):
-            if "группы" in line.lower() and ("онлайн" in line.lower() or i + 1 < len(lines)):
-                start_index = i
-                break
-        
-        # Проходим по тексту, начиная с расписания
-        for line in lines[start_index:]:
+        # 2. Идем по строкам и собираем данные
+        for line in lines:
             lower_line = line.lower()
             
-            # Пропускаем мусор
-            if any(word in lower_line for word in ignore_words):
+            # Пропускаем служебные слова, которые не являются ни городами, ни группами
+            if any(w in lower_line for w in ["главная", "собрания", "жизнь в аа", "литература", "наши истории", "фонд обслуживания", "english", "где проходят", "выбери свою", "прокрутить вверх", "группы в", "группы"]):
                 continue
                 
-            # Если нашли слово "группы в" — значит, следующий город это то, что нам нужно
-            if lower_line.startswith("группы в"):
-                continue # Просто пропускаем эту строку
+            # 3. Определяем, является ли строка названием города
+            # Город — это короткая строка (до 25 символов), которая не содержит признаков группы
+            if len(line) < 25 and not any(w in lower_line for w in ["аа ", "аа«", "аа «", "группа", "адрес", "время", "контакт", "zoom", "пароль", "формат", "2gis", "телефон", "https://"]):
+                # Сохраняем предыдущую группу, если она была
+                if current_city and current_group_name:
+                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_group_info))
+                    current_group_name = None
+                    current_group_info = []
                 
-            # Если строка короткая (до 20 символов) и не похожа на описание (нет "адрес:", "время:" и т.д.)
-            # И начинается с большой буквы — значит, это город
-            if len(line) < 25 and line[0].isupper() and not any(w in lower_line for w in ["адрес", "время", "контакт", "zoom", "пароль"]):
-                # Сохраняем предыдущий город, если он есть
-                if current_city and current_groups:
-                    data[current_city] = current_groups
+                # Проверяем, не является ли это мусором (например, "онлайн")
+                if line not in ["Контакты", "Зенкова 13", "8 (707) 208-05-53", "Прокрутить вверх"]:
+                    current_city = line
+                    if current_city not in data:
+                        data[current_city] = []
+                continue
+
+            # 4. Определяем, является ли строка названием группы
+            if any(w in line for w in ["АА «", "АА \"", "Мужская группа", "Талгар", "каскелен", "АА  «", "АА гр."]):
+                # Сохраняем предыдущую группу, если она была
+                if current_city and current_group_name:
+                    data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_group_info))
                 
-                current_city = line
-                current_groups = []
-            
-            # Если это группа (начинается с АА, Мужская, Талгар, каскелен и т.д.)
-            elif current_city and any(w in line for w in ["АА", "аа", "группа", "Талгар", "каскелен"]):
-                # Собираем описание группы в кучу
-                group_text = [f"• <b>{line}</b>"]
-                
-                # Берем следующие строки, пока не встретим новую группу или город
-                # (это упрощенно, но работает для текущей структуры сайта)
-                group_index = lines.index(line)
-                for next_line in lines[group_index+1:]:
-                    next_lower = next_line.lower()
-                    if any(w in next_lower for w in ["адрес", "время", "контакт", "zoom", "пароль", "как нас найти", "формат группы", "2gis", "телефон", "сайт:", "instagram"]):
-                        group_text.append(next_line.replace("Адрес:", "📍 Адрес:").replace("Время:", "⏰ Время:").replace("Контакты:", "📞 Контакты:").replace("Площадка Zoom:", "💻 Zoom:").replace("Пароль по номеру:", "🔑 Пароль:"))
-                    else:
-                        break # Если пошло что-то другое (новая группа или город), останавливаемся
-                
-                current_groups.append("\n".join(group_text))
+                current_group_name = line
+                current_group_info = []
+                continue
+
+            # 5. Собираем информацию для текущей группы
+            if current_group_name:
+                # Если строка содержит ключевые слова, форматируем её
+                formatted_line = line.replace("Адрес:", "📍 Адрес:").replace("Время:", "⏰ Время:").replace("Контакты:", "📞 Контакты:").replace("Площадка Zoom:", "💻 Zoom:").replace("Пароль по номеру:", "🔑 Пароль:").replace("Чат в Whatsapp:", "💬 WhatsApp:").replace("Чат в Telegram:", "💬 Telegram:").replace("2Gis:", "📍 2GIS:")
+                current_group_info.append(formatted_line)
+
+        # Сохраняем последнюю группу
+        if current_city and current_group_name:
+            data[current_city].append(f"• <b>{current_group_name}</b>\n" + "\n".join(current_group_info))
+
+        # Очищаем пустые города
+        data = {k: v for k, v in data.items() if v}
         
-        # Добавляем последний город
-        if current_city and current_groups:
-            data[current_city] = current_groups
-            
         if not data:
             return {}
             
@@ -110,7 +105,6 @@ def fetch_schedule_sync():
 def get_cities_kb(data, lang="ru"):
     kb = []
     row = []
-    # Сортируем города по алфавиту
     cities = sorted(data.keys())
     
     for city in cities:
@@ -127,17 +121,8 @@ async def show_schedule_menu(message: types.Message):
     lang = await get_user_language(message.from_user.id)
     if not lang: lang = "ru"
     
-    # Сообщение о загрузке
-    wait_msg = await message.answer("⏳ Загружаю расписание с сайта, подождите...")
-    
-    # Парсим в отдельном потоке
+    # Парсим в фоне
     data = await asyncio.to_thread(fetch_schedule_sync)
-    
-    # Удаляем сообщение о загрузке
-    try:
-        await wait_msg.delete()
-    except Exception:
-        pass
     
     if not data:
         await message.answer("Сайт с расписанием временно недоступен. Попробуйте позже.")
@@ -174,7 +159,7 @@ async def callback_schedule(callback: types.CallbackQuery):
             
         text = f"🏙 <b>{city_name}</b>\n\n" + "\n\n".join(groups) + t["help_text"]
         
-        # Если текст слишком длинный (Алматы), бьем на части
+        # Если Алматы выдает очень много текста, бьем на части
         if len(text) > 4000:
             chunks = [text[i:i+4000] for i in range(0, len(text), 4000)]
             
